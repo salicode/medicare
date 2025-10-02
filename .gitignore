@@ -1,0 +1,56 @@
+# .NET build artifacts
+bin/
+obj/
+out/
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# VS Code settings
+.vscode/
+
+# Rider settings
+.idea/
+
+# ASP.NET temporary files
+*.dbmdl
+*.pidb
+
+# Logs
+*.log
+
+# NuGet packages
+*.nupkg
+packages/
+.nuget/
+
+# Entity Framework migrations
+Migrations/
+
+# Publish output
+publish/
+wwwroot/
+
+# Test results
+TestResults/
+*.trx
+
+# Others
+*.vspscc
+*.vssscc
+_ReSharper*/
+*.resharper
+*.DotSettings.user
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+appsettings.Development.json
+appsettings.Local.json
+appsettings.Production.json
+secrets.json
+appsettings.*.json
