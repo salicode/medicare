@@ -18,9 +18,9 @@ namespace MediCare.Models.Data
         private readonly ILogger<AuthController> _logger;
 
         public AuthController(
-            ApplicationDbContext db, 
-            Microsoft.AspNetCore.Identity.IPasswordHasher<User> hasher, 
-            IConfiguration config, 
+            ApplicationDbContext db,
+            Microsoft.AspNetCore.Identity.IPasswordHasher<User> hasher,
+            IConfiguration config,
             IEmailService emailService,
             ILogger<AuthController> logger)
         {
@@ -39,7 +39,7 @@ namespace MediCare.Models.Data
                 // Input validation
                 if (string.IsNullOrWhiteSpace(req.Password) || req.Password.Length < 8)
                     return BadRequest("Password must be at least 8 characters long");
-                
+
                 if (!IsPasswordStrong(req.Password))
                     return BadRequest("Password must contain at least one uppercase letter and one number");
 
@@ -50,21 +50,50 @@ namespace MediCare.Models.Data
                 if (await _db.Users.AnyAsync(u => u.Email == req.Email))
                     return BadRequest("Email already exists");
 
+                var defaultRole = await _db.Roles.FirstOrDefaultAsync(r => r.Name == "Patient");
+                if (defaultRole == null)
+                    return BadRequest("Default role not found");
+
+
+
+
+
                 // Create user
+                // var user = new User
+                // {
+                //     Username = req.Username,
+                //     Email = req.Email,
+                //     UserRoles = req.Role.Permissions,
+                //     PatientProfileId = req.PatientProfileId,
+                //     IsEmailConfirmed = false,
+                //     CreatedAt = DateTime.UtcNow
+                // };
+
                 var user = new User
                 {
                     Username = req.Username,
                     Email = req.Email,
-                    Role = req.Role,
                     PatientProfileId = req.PatientProfileId,
                     IsEmailConfirmed = false,
                     CreatedAt = DateTime.UtcNow
                 };
 
+
                 user.PasswordHash = _hasher.HashPassword(user, req.Password);
-                
+
                 _db.Users.Add(user);
                 await _db.SaveChangesAsync();
+
+
+
+                var userRole = new UserRole
+                {
+                    UserId = user.Id,
+                    RoleId = defaultRole.Id,
+                    AssignedAt = DateTime.UtcNow
+                };
+
+                _db.UserRoles.Add(userRole);
 
                 // Generate email confirmation token
                 var token = GenerateEmailConfirmationToken(user);
@@ -72,18 +101,22 @@ namespace MediCare.Models.Data
                 await _db.SaveChangesAsync();
 
                 // Send confirmation email
-                var confirmationLink = Url.Action("ConfirmEmail", "Auth", 
+                var confirmationLink = Url.Action("ConfirmEmail", "Auth",
                     new { userId = user.Id, token = token.Token }, Request.Scheme);
-                
+
                 await _emailService.SendConfirmationEmailAsync(user.Email, confirmationLink);
 
                 _logger.LogInformation("User registered successfully: {Username}", user.Username);
-                
-                return Ok(new { 
-                    user.Id, 
-                    user.Username, 
+
+
+
+                return Ok(new
+                {
+                    user.Id,
+                    user.Username,
                     user.Email,
-                    user.Role, 
+                    // user.Role,
+                    Role = defaultRole.Name,
                     RequiresConfirmation = true,
                     Message = "Registration successful. Please check your email for confirmation instructions."
                 });
@@ -95,13 +128,20 @@ namespace MediCare.Models.Data
             }
         }
 
+
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest req)
         {
             try
             {
-                var user = await _db.Users.FirstOrDefaultAsync(u => u.Username == req.Username);
-                if (user == null) 
+                var user = await _db.Users
+                    .Include(u => u.UserRoles)           // Include UserRoles
+                    .ThenInclude(ur => ur.Role)          // Include Role
+                    .ThenInclude(r => r.Permissions)     // Include Permissions
+                    .ThenInclude(rp => rp.Permission)    // Include Permission details
+                    .FirstOrDefaultAsync(u => u.Username == req.Username);
+
+                if (user == null)
                 {
                     _logger.LogWarning("Login attempt with non-existent username: {Username}", req.Username);
                     return Unauthorized("Invalid credentials");
@@ -122,10 +162,13 @@ namespace MediCare.Models.Data
                 }
 
                 var token = GenerateJwt(user);
-                
+
                 _logger.LogInformation("User logged in successfully: {Username}", user.Username);
-                
-                return Ok(new LoginResponse(token, user.Role.ToString(), user.Username));
+
+                // Get primary role for response
+                var primaryRole = user.UserRoles.FirstOrDefault()?.Role.Name ?? "Patient";
+
+                return Ok(new LoginResponse(token, primaryRole, user.Username));
             }
             catch (Exception ex)
             {
@@ -141,9 +184,9 @@ namespace MediCare.Models.Data
             {
                 var confirmationToken = await _db.EmailConfirmationTokens
                     .Include(t => t.User)
-                    .FirstOrDefaultAsync(t => 
-                        t.UserId == userId && 
-                        t.Token == token && 
+                    .FirstOrDefaultAsync(t =>
+                        t.UserId == userId &&
+                        t.Token == token &&
                         t.UsedAt == null);
 
                 if (confirmationToken == null)
@@ -160,11 +203,11 @@ namespace MediCare.Models.Data
 
                 confirmationToken.User.IsEmailConfirmed = true;
                 confirmationToken.UsedAt = DateTime.UtcNow;
-                
+
                 await _db.SaveChangesAsync();
 
                 _logger.LogInformation("Email confirmed successfully for user {UserId}", userId);
-                
+
                 return Ok(new { Message = "Email confirmed successfully. You can now log in." });
             }
             catch (Exception ex)
@@ -202,13 +245,13 @@ namespace MediCare.Models.Data
                 await _db.SaveChangesAsync();
 
                 // Send confirmation email
-                var confirmationLink = Url.Action("ConfirmEmail", "Auth", 
+                var confirmationLink = Url.Action("ConfirmEmail", "Auth",
                     new { userId = user.Id, token = newToken.Token }, Request.Scheme);
-                
+
                 await _emailService.SendConfirmationEmailAsync(user.Email, confirmationLink);
 
                 _logger.LogInformation("Confirmation email resent for {Email}", user.Email);
-                
+
                 return Ok(new { Message = "Confirmation email has been resent." });
             }
             catch (Exception ex)
@@ -236,13 +279,13 @@ namespace MediCare.Models.Data
                 await _db.SaveChangesAsync();
 
                 // Send password reset email
-                var resetLink = Url.Action("ResetPassword", "Auth", 
+                var resetLink = Url.Action("ResetPassword", "Auth",
                     new { token = resetToken.Token }, Request.Scheme);
-                
+
                 await _emailService.SendPasswordResetEmailAsync(user.Email, resetLink);
 
                 _logger.LogInformation("Password reset email sent for {Email}", user.Email);
-                
+
                 return Ok(new { Message = "If the email exists, a password reset link has been sent." });
             }
             catch (Exception ex)
@@ -254,8 +297,8 @@ namespace MediCare.Models.Data
 
         private bool IsPasswordStrong(string password)
         {
-            return password.Length >= 8 && 
-                   password.Any(char.IsDigit) && 
+            return password.Length >= 8 &&
+                   password.Any(char.IsDigit) &&
                    password.Any(char.IsUpper) &&
                    password.Any(char.IsLower);
         }
@@ -283,28 +326,37 @@ namespace MediCare.Models.Data
         }
 
         private string GenerateJwt(User user)
-        {
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]));
-            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+{
+    var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]));
+    var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
-            var claims = new List<Claim>
-            {
-                new Claim("id", user.Id.ToString()),
-                new Claim("username", user.Username),
-                new Claim("email", user.Email),
-                new Claim("role", user.Role.ToString()),
-                new Claim(ClaimTypes.Role, user.Role.ToString()),
-                new Claim("email_confirmed", user.IsEmailConfirmed.ToString())
-            };
+    // Get user roles
+    var userRoles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
+    var primaryRole = userRoles.FirstOrDefault() ?? "Patient";
 
-            var token = new JwtSecurityToken(
-                issuer: _config["Jwt:Issuer"],
-                audience: _config["Jwt:Audience"],
-                claims: claims,
-                expires: DateTime.UtcNow.AddHours(8),
-                signingCredentials: creds);
+    var claims = new List<Claim>
+    {
+        new Claim("id", user.Id.ToString()),
+        new Claim("username", user.Username),
+        new Claim("email", user.Email),
+        new Claim("primary_role", primaryRole),
+        new Claim("email_confirmed", user.IsEmailConfirmed.ToString())
+    };
 
-            return new JwtSecurityTokenHandler().WriteToken(token);
-        }
+    // Add all roles as claims (for [Authorize(Roles = "X")] to work)
+    foreach (var role in userRoles)
+    {
+        claims.Add(new Claim(ClaimTypes.Role, role));
+    }
+
+    var token = new JwtSecurityToken(
+        issuer: _config["Jwt:Issuer"],
+        audience: _config["Jwt:Audience"],
+        claims: claims,
+        expires: DateTime.UtcNow.AddHours(8),
+        signingCredentials: creds);
+
+    return new JwtSecurityTokenHandler().WriteToken(token);
+}
     }
 }

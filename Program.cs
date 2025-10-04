@@ -1,5 +1,3 @@
-
-
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
@@ -8,6 +6,7 @@ using Microsoft.OpenApi.Models;
 using MediCare.Models.Data;            
 using System.Text;
 using MediCare;
+using System.Security.Claims;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -83,18 +82,35 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-// Authorization policies
 builder.Services.AddAuthorization(options =>
 {
+   
+    options.AddPolicy("RequireAdminRole", policy => 
+        policy.RequireRole("SuperAdmin"));
+    
+    options.AddPolicy("RequireDoctorRole", policy => 
+        policy.RequireRole("Doctor", "SuperAdmin"));
+    
+    options.AddPolicy("RequireNurseRole", policy => 
+        policy.RequireRole("Nurse", "SuperAdmin"));
+    
+    options.AddPolicy("RequireStaffRole", policy => 
+        policy.RequireRole("Doctor", "Nurse", "SuperAdmin"));
+
+    // Resource-based policies (for patient-specific access)
     options.AddPolicy("CanViewPatient", policy =>
         policy.Requirements.Add(new PatientAuthorizationRequirement(PatientAuthorizationOperation.View)));
+        
     options.AddPolicy("CanUpdatePatient", policy =>
         policy.Requirements.Add(new PatientAuthorizationRequirement(PatientAuthorizationOperation.Update)));
+        
     options.AddPolicy("CanPrescribe", policy =>
         policy.Requirements.Add(new PatientAuthorizationRequirement(PatientAuthorizationOperation.Prescribe)));
 });
 
-builder.Services.AddScoped<IAuthorizationHandler, PatientAuthorizationHandler>();
+
+builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
+
 
 // Logging
 builder.Services.AddLogging();

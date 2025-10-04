@@ -3,7 +3,7 @@
 ### Test 1: Get Users (Admin only - will likely fail without auth)
 GET {{medicare_HostAddress}}/api/Admin/users
 Content-Type: application/json
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjFiMTFmODExLTgxNGQtNGI4Yy1hZjY4LWQ4YzAwYjc2ZWIzYSIsInVzZXJuYW1lIjoiYWRtaW4iLCJlbWFpbCI6ImFkbWluQG1lZGljYXJlLmNvbSIsInJvbGUiOiJTeXN0ZW1BZG1pbiIsImh0dHA6Ly9zY2hlbWFzLm1pY3Jvc29mdC5jb20vd3MvMjAwOC8wNi9pZGVudGl0eS9jbGFpbXMvcm9sZSI6IlN5c3RlbUFkbWluIiwiZW1haWxfY29uZmlybWVkIjoiVHJ1ZSIsImV4cCI6MTc1OTQ0NDk0OSwiaXNzIjoiTWVkaUNhcmVBcGkiLCJhdWQiOiJNZWRpQ2FyZUFwaUNsaWVudHMifQ.MV_n-hXnxlxwBmA6yjAhOYby6ItrgicW5Kpn4i4h8HI
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjFiMTFmODExLTgxNGQtNGI4Yy1hZjY4LWQ4YzAwYjc2ZWIzYSIsInVzZXJuYW1lIjoiYWRtaW4iLCJlbWFpbCI6ImFkbWluQG1lZGljYXJlLmNvbSIsInJvbGUiOiJTeXN0ZW1BZG1pbiIsImh0dHA6Ly9zY2hlbWFzLm1pY3Jvc29mdC5jb20vd3MvMjAwOC8wNi9pZGVudGl0eS9jbGFpbXMvcm9sZSI6IlN5c3RlbUFkbWluIiwiZW1haWxfY29uZmlybWVkIjoiVHJ1ZSIsImV4cCI6MTc1OTUyMjY5OCwiaXNzIjoiTWVkaUNhcmVBcGkiLCJhdWQiOiJNZWRpQ2FyZUFwaUNsaWVudHMifQ.fEhVFojE7-vMYu-fGkxsi2tdIMZLdls0DkiCyEXoWqE
 
 
 ### Test 3: Login (FIXED - removed trailing comma)
@@ -21,8 +21,8 @@ POST {{medicare_HostAddress}}/api/Auth/register
 Content-Type: application/json
 
 {
-  "email": "nagarisalisuaminuabdurrahman@gmail.com",
-  "username": "doctor2",
+  "email": "salisuaminu615@gmail.com",
+  "username": "Yalwa",
   "password": "Az123456789",
   "role": 1
 }
@@ -42,5 +42,207 @@ GET {{medicare_HostAddress}}/api/Auth/confirm-email?userId=REPLACE_WITH_ACTUAL_U
 
 
 ###
-DELETE 
+
+### =============================================
+### ROLE MANAGEMENT ENDPOINTS (Admin only)
+### =============================================
+
+###
+### Get all available permissions
+GET {{medicare_HostAddress}}/api/Roles/permissions
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImE2ZjNhYTczLWEyNWEtNGQ5Ny1iNjg3LTk2NGNhNzlkYmZhMSIsInVzZXJuYW1lIjoiYWRtaW4iLCJlbWFpbCI6ImFkbWluQG1lZGljYXJlLmNvbSIsInByaW1hcnlfcm9sZSI6IlN1cGVyQWRtaW4iLCJlbWFpbF9jb25maXJtZWQiOiJUcnVlIiwiaHR0cDovL3NjaGVtYXMubWljcm9zb2Z0LmNvbS93cy8yMDA4LzA2L2lkZW50aXR5L2NsYWltcy9yb2xlIjoiU3VwZXJBZG1pbiIsImV4cCI6MTc1OTU5MjU0OSwiaXNzIjoiTWVkaUNhcmVBcGkiLCJhdWQiOiJNZWRpQ2FyZUFwaUNsaWVudHMifQ.wmAojuLSVVWjRR_6x9q2g8z_N74f83cZdML9uZBKtdM
+
+
+### Get all roles
+GET {{medicare_HostAddress}}/api/Roles
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+### Get specific role by ID
+GET {{medicare_HostAddress}}/api/Roles/REPLACE_WITH_ROLE_ID
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImE2ZjNhYTczLWEyNWEtNGQ5Ny1iNjg3LTk2NGNhNzlkYmZhMSIsInVzZXJuYW1lIjoiYWRtaW4iLCJlbWFpbCI6ImFkbWluQG1lZGljYXJlLmNvbSIsInByaW1hcnlfcm9sZSI6IlN1cGVyQWRtaW4iLCJlbWFpbF9jb25maXJtZWQiOiJUcnVlIiwiaHR0cDovL3NjaGVtYXMubWljcm9zb2Z0LmNvbS93cy8yMDA4LzA2L2lkZW50aXR5L2NsYWltcy9yb2xlIjoiU3VwZXJBZG1pbiIsImV4cCI6MTc1OTU5MjI0NywiaXNzIjoiTWVkaUNhcmVBcGkiLCJhdWQiOiJNZWRpQ2FyZUFwaUNsaWVudHMifQ.M45Tubc-j2ko90M_JiM8A35P-wy19EUSRfYF5fc-jek
+
+### Create new role
+### Create role with valid permissions
+POST {{medicare_HostAddress}}/api/Roles
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImE2ZjNhYTczLWEyNWEtNGQ5Ny1iNjg3LTk2NGNhNzlkYmZhMSIsInVzZXJuYW1lIjoiYWRtaW4iLCJlbWFpbCI6ImFkbWluQG1lZGljYXJlLmNvbSIsInByaW1hcnlfcm9sZSI6IlN1cGVyQWRtaW4iLCJlbWFpbF9jb25maXJtZWQiOiJUcnVlIiwiaHR0cDovL3NjaGVtYXMubWljcm9zb2Z0LmNvbS93cy8yMDA4LzA2L2lkZW50aXR5L2NsYWltcy9yb2xlIjoiU3VwZXJBZG1pbiIsImV4cCI6MTc1OTU5MjU0OSwiaXNzIjoiTWVkaUNhcmVBcGkiLCJhdWQiOiJNZWRpQ2FyZUFwaUNsaWVudHMifQ.wmAojuLSVVWjRR_6x9q2g8z_N74f83cZdML9uZBKtdM
+
+{
+  "name": "LabTechnician",
+  "description": "Laboratory technician role",
+  "permissions": ["patients.view", "testresults.view"]
+}
+
+### Update role
+PUT {{medicare_HostAddress}}/api/Roles/REPLACE_WITH_ROLE_ID
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+{
+  "description": "Updated laboratory technician role with more permissions",
+  "permissions": ["patients.view", "testresults.view", "testresults.create", "testresults.edit"]
+}
+
+### Delete role
+DELETE {{medicare_HostAddress}}/api/Roles/REPLACE_WITH_ROLE_ID
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+### Get all permissions
+GET {{medicare_HostAddress}}/api/Roles/permissions
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+### Assign role to user
+POST {{medicare_HostAddress}}/api/Roles/assign
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+{
+  "userId": "REPLACE_WITH_USER_ID",
+  "roleId": "REPLACE_WITH_ROLE_ID"
+}
+
+### Unassign role from user
+DELETE {{medicare_HostAddress}}/api/Roles/unassign
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+{
+  "userId": "REPLACE_WITH_USER_ID",
+  "roleId": "REPLACE_WITH_ROLE_ID"
+}
+
+### =============================================
+### USER MANAGEMENT ENDPOINTS (Admin only)
+### =============================================
+
+### Get all users
+GET {{medicare_HostAddress}}/api/Admin/users
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+### Create new user (Admin can assign specific role)
+POST {{medicare_HostAddress}}/api/Admin/users
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+{
+  "email": "newdoctor@medicare.com",
+  "username": "newdoctor",
+  "password": "Doctor@123",
+  "roleId": "REPLACE_WITH_DOCTOR_ROLE_ID"
+}
+
+### Delete user
+DELETE {{medicare_HostAddress}}/api/Admin/users/REPLACE_WITH_USER_ID
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+### =============================================
+### PATIENT MANAGEMENT ENDPOINTS
+### =============================================
+
+### Get patient record (requires CanViewPatient policy)
+GET {{medicare_HostAddress}}/api/Patients/REPLACE_WITH_PATIENT_ID
+Content-Type: application/json
+Authorization: Bearer {{doctor_token}}
+
+### Update patient record (requires CanUpdatePatient policy)
+PUT {{medicare_HostAddress}}/api/Patients/REPLACE_WITH_PATIENT_ID
+Content-Type: application/json
+Authorization: Bearer {{doctor_token}}
+
+{
+  "fullName": "Updated Patient Name"
+}
+
+### Add vital signs to patient
+POST {{medicare_HostAddress}}/api/Patients/REPLACE_WITH_PATIENT_ID/vitals
+Content-Type: application/json
+Authorization: Bearer {{nurse_token}}
+
+{
+  "type": "BP",
+  "value": "120/80",
+  "notes": "Normal blood pressure",
+  "recordedAt": "2024-01-15T10:30:00Z"
+}
+
+### Prescribe medication to patient (requires CanPrescribe policy)
+POST {{medicare_HostAddress}}/api/Patients/REPLACE_WITH_PATIENT_ID/prescriptions
+Content-Type: application/json
+Authorization: Bearer {{doctor_token}}
+
+{
+  "medication": "Amoxicillin",
+  "dosage": "500mg",
+  "createdAt": "2024-01-15T10:30:00Z"
+}
+
+### Get patient test results
+GET {{medicare_HostAddress}}/api/Patients/REPLACE_WITH_PATIENT_ID/tests
+Content-Type: application/json
+Authorization: Bearer {{doctor_token}}
+
+### =============================================
+### VARIABLES SECTION - Store tokens here after login
+### =============================================
+
+### After successful login, copy the token here:
+# @name admin_login
+POST {{medicare_HostAddress}}/api/Auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "Admin@123"
+}
+
+###
+@admin_token = {{admin_login.response.body.$.token}}
+
+### Doctor login
+# @name doctor_login
+POST {{medicare_HostAddress}}/api/Auth/login
+Content-Type: application/json
+
+{
+  "username": "drjohn",
+  "password": "Doctor@123"
+}
+
+###
+@doctor_token = {{doctor_login.response.body.$.token}}
+
+### Nurse login
+# @name nurse_login
+POST {{medicare_HostAddress}}/api/Auth/login
+Content-Type: application/json
+
+{
+  "username": "nursemary",
+  "password": "Nurse@123"
+}
+
+###
+@nurse_token = {{nurse_login.response.body.$.token}}
+
+### Patient login
+# @name patient_login
+POST {{medicare_HostAddress}}/api/Auth/login
+Content-Type: application/json
+
+{
+  "username": "patient1",
+  "password": "Patient@123"
+}
+
+###
+@patient_token = {{patient_login.response.body.$.token}}
+
+
 

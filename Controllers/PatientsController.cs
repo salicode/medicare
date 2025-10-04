@@ -54,29 +54,29 @@ namespace MediCare.Models.Data
             return Ok(patient);
         }
 
-        // --- Vitals: Nurses & Doctors can add vitals for assigned patients ---
+       
+
         [HttpPost("{id:guid}/vitals")]
-        [Authorize] // authorization done inside for more granular check
-        public async Task<IActionResult> AddVital(Guid id, [FromBody] Vital vital)
-        {
-            // Ensure patient exists
-            var patient = await _db.PatientRecords.FindAsync(id);
-            if (patient == null) return NotFound();
+[Authorize(Roles = "Doctor,Nurse,SuperAdmin")] // Use role-based authorization
+public async Task<IActionResult> AddVital(Guid id, [FromBody] Vital vital)
+{
+    // Ensure patient exists
+    var patient = await _db.PatientRecords.FindAsync(id);
+    if (patient == null) return NotFound();
 
-            // Authorize: view/update for nurses and doctors. Use CanUpdatePatient policy to check assigned.
-            var authResult = await _auth.AuthorizeAsync(User, id, "CanUpdatePatient");
-            if (!authResult.Succeeded) return Forbid();
+    // Check if user is assigned to this patient
+    var userId = Guid.Parse(User.FindFirst("id")!.Value);
+    var isAssigned = await _db.UserPatientAssignments
+        .AnyAsync(a => a.UserId == userId && a.PatientRecordId == id);
+    
+    if (!isAssigned && !User.IsInRole("SuperAdmin"))
+        return Forbid();
 
-            // If caller is Nurse, we allow vitals. If caller is Doctor, also allow.
-            var role = User.FindFirst("role")?.Value;
-            if (role != Role.Doctor.ToString() && role != Role.Nurse.ToString() && role != Role.SystemAdmin.ToString())
-                return Forbid();
-
-            vital.PatientRecordId = id;
-            _db.Vitals.Add(vital);
-            await _db.SaveChangesAsync();
-            return Ok(vital);
-        }
+    vital.PatientRecordId = id;
+    _db.Vitals.Add(vital);
+    await _db.SaveChangesAsync();
+    return Ok(vital);
+}
 
         // Doctor prescribes medication
         [HttpPost("{id:guid}/prescriptions")]
@@ -110,4 +110,6 @@ namespace MediCare.Models.Data
             return Ok(results);
         }
     }
+
+    
 }

@@ -1,79 +1,87 @@
-using Microsoft.AspNetCore.Authorization;
 
-using  MediCare;
 
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
 
 namespace MediCare.Models.Data
 {
     public enum PatientAuthorizationOperation { View, Update, Prescribe }
 
-    // Requirement carries the operation the policy checks for
     public class PatientAuthorizationRequirement : IAuthorizationRequirement
     {
         public PatientAuthorizationOperation Operation { get; }
         public PatientAuthorizationRequirement(PatientAuthorizationOperation op) => Operation = op;
     }
 
-    // Handler that checks the user role and assignments.
     public class PatientAuthorizationHandler : AuthorizationHandler<PatientAuthorizationRequirement, Guid>
     {
         private readonly ApplicationDbContext _db;
         public PatientAuthorizationHandler(ApplicationDbContext db) => _db = db;
 
-        protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, PatientAuthorizationRequirement requirement, Guid resource)
+        protected override async Task HandleRequirementAsync(
+            AuthorizationHandlerContext context,
+            PatientAuthorizationRequirement requirement,
+            Guid patientRecordId)
         {
-            // resource is patientRecordId (Guid)
-            var sub = context.User.FindFirst("id")?.Value;
-            var roleClaim = context.User.FindFirst("role")?.Value;
+            var userIdClaim = context.User.FindFirst("id")?.Value;
+            if (userIdClaim == null || !Guid.TryParse(userIdClaim, out var userId))
+                return;
 
-            if (sub == null || roleClaim == null)
-                return Task.CompletedTask;
+            var user = await _db.Users
+                .Include(u => u.UserRoles)
+                .ThenInclude(ur => ur.Role)
+                .FirstOrDefaultAsync(u => u.Id == userId);
 
-            if (!Guid.TryParse(sub, out var userId))
-                return Task.CompletedTask;
+            if (user == null) return;
 
-            // If admin -> success
-            if (Enum.TryParse<Role>(roleClaim, out var role) && role == Role.SystemAdmin)
+            // Get user's roles
+            var userRoles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
+            
+            // SuperAdmin can do everything
+            if (userRoles.Contains("SuperAdmin"))
             {
                 context.Succeed(requirement);
-                return Task.CompletedTask;
+                return;
             }
 
-            // If patient -> must be own profile for View operation
-            if (role == Role.Patient)
+            // Check based on operation and roles
+            switch (requirement.Operation)
             {
-                var user = _db.Users.Find(userId);
-                if (user?.PatientProfileId == resource && requirement.Operation == PatientAuthorizationOperation.View)
-                {
-                    context.Succeed(requirement);
-                }
-                return Task.CompletedTask;
-            }
-
-            // For Doctor/Nurse -> check assignment
-            if (role == Role.Doctor || role == Role.Nurse)
-            {
-                var assigned = _db.UserPatientAssignments.Any(a => a.UserId == userId && a.PatientRecordId == resource);
-                if (!assigned) return Task.CompletedTask;
-
-                // role-specific operation restrictions:
-                if (role == Role.Nurse)
-                {
-                    // Nurse can view and update vitals only (we map Update to vitals updates at controller level)
-                    if (requirement.Operation == PatientAuthorizationOperation.View || requirement.Operation == PatientAuthorizationOperation.Update)
+                case PatientAuthorizationOperation.View:
+                    if (userRoles.Contains("Doctor") || userRoles.Contains("Nurse") || 
+                        await IsPatientOwner(user, patientRecordId) || 
+                        await IsAssignedToPatient(userId, patientRecordId))
                     {
                         context.Succeed(requirement);
                     }
-                }
-                else if (role == Role.Doctor)
-                {
-                    // Doctor may view/update/prescribe
-                    context.Succeed(requirement);
-                }
-            }
+                    break;
 
-            return Task.CompletedTask;
+                case PatientAuthorizationOperation.Update:
+                    if (userRoles.Contains("Doctor") || 
+                        (userRoles.Contains("Nurse") && await IsAssignedToPatient(userId, patientRecordId)))
+                    {
+                        context.Succeed(requirement);
+                    }
+                    break;
+
+                case PatientAuthorizationOperation.Prescribe:
+                    if (userRoles.Contains("Doctor") && await IsAssignedToPatient(userId, patientRecordId))
+                    {
+                        context.Succeed(requirement);
+                    }
+                    break;
+            }
+        }
+
+        private async Task<bool> IsPatientOwner(User user, Guid patientRecordId)
+        {
+            return user.PatientProfileId == patientRecordId;
+        }
+
+        private async Task<bool> IsAssignedToPatient(Guid userId, Guid patientRecordId)
+        {
+            return await _db.UserPatientAssignments
+                .AnyAsync(a => a.UserId == userId && a.PatientRecordId == patientRecordId);
         }
     }
 }
