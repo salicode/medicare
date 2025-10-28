@@ -57,3 +57,4 @@ appsettings.Production.json
 secrets.json
 appsettings.*.json
 appsettings.Development.json
+medicare.http
