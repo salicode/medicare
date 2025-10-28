@@ -1,12 +1,12 @@
 @medicare_HostAddress = http://localhost:5151
 
 ### Test 1: Get Users (Admin only - will likely fail without auth)
+
 GET {{medicare_HostAddress}}/api/Admin/users
 Content-Type: application/json
-Authorization: Bearer 
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjlhYzY1NDJkLThlYzMtNGYwNy1iNjgzLTdhMWI1NjA4ZGE0OCIsInVzZXJuYW1lIjoiYWRtaW4iLCJlbWFpbCI6ImFkbWluQG1lZGljYXJlLmNvbSIsInByaW1hcnlfcm9sZSI6IlN1cGVyQWRtaW4iLCJlbWFpbF9jb25maXJtZWQiOiJUcnVlIiwiaHR0cDovL3NjaGVtYXMubWljcm9zb2Z0LmNvbS93cy8yMDA4LzA2L2lkZW50aXR5L2NsYWltcy9yb2xlIjoiU3VwZXJBZG1pbiIsImV4cCI6MTc2MTA4MjYyNCwiaXNzIjoiTWVkaUNhcmVBcGkiLCJhdWQiOiJNZWRpQ2FyZUFwaUNsaWVudHMifQ.eXA_XPJDFSerz7Rbyaq895PFuj9oycMhjMb0RydCjGo
 
-
-### Test 3: Login (FIXED - removed trailing comma)
+### Test 3: 
 POST {{medicare_HostAddress}}/api/Auth/login
 Content-Type: application/json
 
@@ -21,10 +21,10 @@ POST {{medicare_HostAddress}}/api/Auth/register
 Content-Type: application/json
 
 {
-  "email": "salisuaminu615@gmail.com",
-  "username": "Yalwa",
-  "password": "Az123456789",
-  "role": 1
+  "email": "quizijaukafi-7605@yopmail.com",
+  "username": "johnpatient",
+  "password": "Patient123"
+  
 }
 
 ###
@@ -33,8 +33,8 @@ Content-Type: application/json
 
 {
   
-  "username": "admin",
-  "password": "Admin@123"
+   "username": "admin",
+   "password": "Admin@123"
 }
 
 ### Test 6: Test email confirmation (replace with actual values)
@@ -51,70 +51,17 @@ GET {{medicare_HostAddress}}/api/Auth/confirm-email?userId=REPLACE_WITH_ACTUAL_U
 ### Get all available permissions
 GET {{medicare_HostAddress}}/api/Roles/permissions
 Content-Type: application/json
-Authorization: Bearer 
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjlhYzY1NDJkLThlYzMtNGYwNy1iNjgzLTdhMWI1NjA4ZGE0OCIsInVzZXJuYW1lIjoiYWRtaW4iLCJlbWFpbCI6ImFkbWluQG1lZGljYXJlLmNvbSIsInByaW1hcnlfcm9sZSI6IlN1cGVyQWRtaW4iLCJlbWFpbF9jb25maXJtZWQiOiJUcnVlIiwiaHR0cDovL3NjaGVtYXMubWljcm9zb2Z0LmNvbS93cy8yMDA4LzA2L2lkZW50aXR5L2NsYWltcy9yb2xlIjoiU3VwZXJBZG1pbiIsImV4cCI6MTc2MTA4NjI5NCwiaXNzIjoiTWVkaUNhcmVBcGkiLCJhdWQiOiJNZWRpQ2FyZUFwaUNsaWVudHMifQ.wksdfuE44Rqmhrq5vzn1LnT8xl9ZpNI4Dp-hqaQtP4s
 
 
-### Get all roles
-GET {{medicare_HostAddress}}/api/Roles
-Content-Type: application/json
-Authorization: Bearer {{admin_token}}
-
-### Get specific role by ID
-GET {{medicare_HostAddress}}/api/Roles/REPLACE_WITH_ROLE_ID
-Content-Type: application/json
-Authorization: Bearer 
-
-### Create new role
-### Create role with valid permissions
-POST {{medicare_HostAddress}}/api/Roles
-Content-Type: application/json
-Authorization: Bearer 
-
-{
-  "name": "LabTechnician",
-  "description": "Laboratory technician role",
-  "permissions": ["patients.view", "testresults.view"]
-}
-
-### Update role
-PUT {{medicare_HostAddress}}/api/Roles/REPLACE_WITH_ROLE_ID
-Content-Type: application/json
-Authorization: Bearer {{admin_token}}
-
-{
-  "description": "Updated laboratory technician role with more permissions",
-  "permissions": ["patients.view", "testresults.view", "testresults.create", "testresults.edit"]
-}
-
-### Delete role
-DELETE {{medicare_HostAddress}}/api/Roles/REPLACE_WITH_ROLE_ID
-Content-Type: application/json
-Authorization: Bearer {{admin_token}}
 
 ### Get all permissions
 GET {{medicare_HostAddress}}/api/Roles/permissions
 Content-Type: application/json
-Authorization: Bearer {{admin_token}}
+Authorization: Bearer 
 
-### Assign role to user
-POST {{medicare_HostAddress}}/api/Roles/assign
-Content-Type: application/json
-Authorization: Bearer {{admin_token}}
 
-{
-  "userId": "REPLACE_WITH_USER_ID",
-  "roleId": "REPLACE_WITH_ROLE_ID"
-}
 
-### Unassign role from user
-DELETE {{medicare_HostAddress}}/api/Roles/unassign
-Content-Type: application/json
-Authorization: Bearer {{admin_token}}
-
-{
-  "userId": "REPLACE_WITH_USER_ID",
-  "roleId": "REPLACE_WITH_ROLE_ID"
-}
 
 ### =============================================
 ### USER MANAGEMENT ENDPOINTS (Admin only)
@@ -123,19 +70,47 @@ Authorization: Bearer {{admin_token}}
 ### Get all users
 GET {{medicare_HostAddress}}/api/Admin/users
 Content-Type: application/json
-Authorization: Bearer {{admin_token}}
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImZhNjQyZGY5LWFhNGQtNDM4MC05MmViLWUxNzQzMDllMTM2MSIsInVzZXJuYW1lIjoiYWRtaW4iLCJlbWFpbCI6ImFkbWluQG1lZGljYXJlLmNvbSIsInByaW1hcnlfcm9sZSI6IlN1cGVyQWRtaW4iLCJlbWFpbF9jb25maXJtZWQiOiJUcnVlIiwiaHR0cDovL3NjaGVtYXMubWljcm9zb2Z0LmNvbS93cy8yMDA4LzA2L2lkZW50aXR5L2NsYWltcy9yb2xlIjoiU3VwZXJBZG1pbiIsImV4cCI6MTc2MTY3NjUwNiwiaXNzIjoiTWVkaUNhcmVBcGkiLCJhdWQiOiJNZWRpQ2FyZUFwaUNsaWVudHMifQ.B6jXGvnu5RNbLy9L9mJFfwOFRCAWQPnTbaxyWNO780k
 
 ### Create new user (Admin can assign specific role)
 POST {{medicare_HostAddress}}/api/Admin/users
 Content-Type: application/json
-Authorization: Bearer {{admin_token}}
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjlhYzY1NDJkLThlYzMtNGYwNy1iNjgzLTdhMWI1NjA4ZGE0OCIsInVzZXJuYW1lIjoiYWRtaW4iLCJlbWFpbCI6ImFkbWluQG1lZGljYXJlLmNvbSIsInByaW1hcnlfcm9sZSI6IlN1cGVyQWRtaW4iLCJlbWFpbF9jb25maXJtZWQiOiJUcnVlIiwiaHR0cDovL3NjaGVtYXMubWljcm9zb2Z0LmNvbS93cy8yMDA4LzA2L2lkZW50aXR5L2NsYWltcy9yb2xlIjoiU3VwZXJBZG1pbiIsImV4cCI6MTc2MTY3MDM2OSwiaXNzIjoiTWVkaUNhcmVBcGkiLCJhdWQiOiJNZWRpQ2FyZUFwaUNsaWVudHMifQ.qxcbFqU37hByLygLhrOza8niOzsFeaTzWtDV5rsdMRk
 
 {
-  "email": "newdoctor@medicare.com",
-  "username": "newdoctor",
-  "password": "Doctor@123",
-  "roleId": "REPLACE_WITH_DOCTOR_ROLE_ID"
+  "email": "freuzasossama-7061@yopmail.com",
+  "username": "Shehu",
+  "password": "Doctor123!",
+  "role": "Doctor"
 }
+###
+POST {{medicare_HostAddress}}/api/Admin/doctors
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImZhNjQyZGY5LWFhNGQtNDM4MC05MmViLWUxNzQzMDllMTM2MSIsInVzZXJuYW1lIjoiYWRtaW4iLCJlbWFpbCI6ImFkbWluQG1lZGljYXJlLmNvbSIsInByaW1hcnlfcm9sZSI6IlN1cGVyQWRtaW4iLCJlbWFpbF9jb25maXJtZWQiOiJUcnVlIiwiaHR0cDovL3NjaGVtYXMubWljcm9zb2Z0LmNvbS93cy8yMDA4LzA2L2lkZW50aXR5L2NsYWltcy9yb2xlIjoiU3VwZXJBZG1pbiIsImV4cCI6MTc2MTY3NjUwNiwiaXNzIjoiTWVkaUNhcmVBcGkiLCJhdWQiOiJNZWRpQ2FyZUFwaUNsaWVudHMifQ.B6jXGvnu5RNbLy9L9mJFfwOFRCAWQPnTbaxyWNO780k
+
+{
+  "userId": "29979c1a-d5e6-4d65-b8c4-c7d2817967db",
+  "fullName": "Dr. Shehu Garba Ali",
+  "specializationId": "51fbd176-74f8-4c4d-926c-c4a01d30e40a",
+  "phoneNumber": "+234997890",
+  "bio": "Cardiologist with 10 years of experience specializing in heart diseases and preventive care.",
+  "yearsOfExperience": 10,
+  "consultationFee": 150.00
+}
+
+### create specialization
+POST {{medicare_HostAddress}}/api/Admin/specializations
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImZhNjQyZGY5LWFhNGQtNDM4MC05MmViLWUxNzQzMDllMTM2MSIsInVzZXJuYW1lIjoiYWRtaW4iLCJlbWFpbCI6ImFkbWluQG1lZGljYXJlLmNvbSIsInByaW1hcnlfcm9sZSI6IlN1cGVyQWRtaW4iLCJlbWFpbF9jb25maXJtZWQiOiJUcnVlIiwiaHR0cDovL3NjaGVtYXMubWljcm9zb2Z0LmNvbS93cy8yMDA4LzA2L2lkZW50aXR5L2NsYWltcy9yb2xlIjoiU3VwZXJBZG1pbiIsImV4cCI6MTc2MTY3NjUwNiwiaXNzIjoiTWVkaUNhcmVBcGkiLCJhdWQiOiJNZWRpQ2FyZUFwaUNsaWVudHMifQ.B6jXGvnu5RNbLy9L9mJFfwOFRCAWQPnTbaxyWNO780k
+
+{
+  "name": "Ortimetics",
+  "description": "Specialize in eye treatment."
+}
+###
+GET {{medicare_HostAddress}}/api/Admin/specializations
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImZhNjQyZGY5LWFhNGQtNDM4MC05MmViLWUxNzQzMDllMTM2MSIsInVzZXJuYW1lIjoiYWRtaW4iLCJlbWFpbCI6ImFkbWluQG1lZGljYXJlLmNvbSIsInByaW1hcnlfcm9sZSI6IlN1cGVyQWRtaW4iLCJlbWFpbF9jb25maXJtZWQiOiJUcnVlIiwiaHR0cDovL3NjaGVtYXMubWljcm9zb2Z0LmNvbS93cy8yMDA4LzA2L2lkZW50aXR5L2NsYWltcy9yb2xlIjoiU3VwZXJBZG1pbiIsImV4cCI6MTc2MTY3NjUwNiwiaXNzIjoiTWVkaUNhcmVBcGkiLCJhdWQiOiJNZWRpQ2FyZUFwaUNsaWVudHMifQ.B6jXGvnu5RNbLy9L9mJFfwOFRCAWQPnTbaxyWNO780k
 
 ### Delete user
 DELETE {{medicare_HostAddress}}/api/Admin/users/REPLACE_WITH_USER_ID
@@ -193,7 +168,7 @@ Authorization: Bearer {{doctor_token}}
 ### =============================================
 
 ### After successful login, copy the token here:
-# @name admin_login
+### @name admin_login
 POST {{medicare_HostAddress}}/api/Auth/login
 Content-Type: application/json
 

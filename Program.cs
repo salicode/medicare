@@ -2,18 +2,14 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using Microsoft.OpenApi.Models;
-using MediCare.Models.Data;            
+using Microsoft.OpenApi.Models;        
 using System.Text;
 using MediCare;
 using System.Security.Claims;
+using MediCare.Models.Entities;
+using User = MediCare.Models.Entities.User;
 
 var builder = WebApplication.CreateBuilder(args);
-
-// ---- Configuration: JWT ----
-builder.Configuration["Jwt:Key"] ??= "ReplaceThisWithASecretKeyLongEnoughForHS256";
-builder.Configuration["Jwt:Issuer"] ??= "MedicareApi";
-builder.Configuration["Jwt:Audience"] ??= "MedicareApiClients";
 
 // Add services
 builder.Services.AddControllers();
@@ -53,6 +49,7 @@ builder.Services.AddScoped<Microsoft.AspNetCore.Identity.IPasswordHasher<User>, 
 // Email service
 
 builder.Services.AddScoped<IEmailService, SmtpEmailService>();
+builder.Services.AddScoped<IAuthorizationHandler, PatientAuthorizationHandler>(); 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
@@ -61,7 +58,8 @@ builder.Services.AddControllers()
 
 
 // JWT Auth
-var key = Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]);
+// var key = Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]);
+var key = Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"] ?? "your-super-secret-key-at-least-32-characters-long");
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -81,6 +79,7 @@ builder.Services.AddAuthentication(options =>
         IssuerSigningKey = new SymmetricSecurityKey(key)
     };
 });
+
 
 builder.Services.AddAuthorization(options =>
 {
@@ -109,9 +108,6 @@ builder.Services.AddAuthorization(options =>
 });
 
 
-builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
-
-
 // Logging
 builder.Services.AddLogging();
 
@@ -121,7 +117,8 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var ctx = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    var hasher = scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.IPasswordHasher<User>>();
+     ctx.Database.Migrate();
+    var hasher = scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.IPasswordHasher<MediCare.Models.Entities.User>>();
     DataSeeder.Seed(ctx, hasher);
 }
 

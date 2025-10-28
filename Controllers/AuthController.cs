@@ -5,7 +5,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 
-namespace MediCare.Models.Data
+namespace MediCare.Models.Entities
 {
     [ApiController]
     [Route("api/[controller]")]
@@ -31,6 +31,7 @@ namespace MediCare.Models.Data
             _logger = logger;
         }
 
+
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterRequest req)
         {
@@ -50,25 +51,14 @@ namespace MediCare.Models.Data
                 if (await _db.Users.AnyAsync(u => u.Email == req.Email))
                     return BadRequest("Email already exists");
 
-                var defaultRole = await _db.Roles.FirstOrDefaultAsync(r => r.Name == "Patient");
+                // Use constant for default role
+                var defaultRole = await _db.Roles.FirstOrDefaultAsync(r => r.Name == RoleConstants.Patient);
+
+
                 if (defaultRole == null)
                     return BadRequest("Default role not found");
 
-
-
-
-
                 // Create user
-                // var user = new User
-                // {
-                //     Username = req.Username,
-                //     Email = req.Email,
-                //     UserRoles = req.Role.Permissions,
-                //     PatientProfileId = req.PatientProfileId,
-                //     IsEmailConfirmed = false,
-                //     CreatedAt = DateTime.UtcNow
-                // };
-
                 var user = new User
                 {
                     Username = req.Username,
@@ -78,14 +68,11 @@ namespace MediCare.Models.Data
                     CreatedAt = DateTime.UtcNow
                 };
 
-
                 user.PasswordHash = _hasher.HashPassword(user, req.Password);
-
                 _db.Users.Add(user);
                 await _db.SaveChangesAsync();
 
-
-
+                // Assign default role
                 var userRole = new UserRole
                 {
                     UserId = user.Id,
@@ -108,14 +95,11 @@ namespace MediCare.Models.Data
 
                 _logger.LogInformation("User registered successfully: {Username}", user.Username);
 
-
-
                 return Ok(new
                 {
                     user.Id,
                     user.Username,
                     user.Email,
-                    // user.Role,
                     Role = defaultRole.Name,
                     RequiresConfirmation = true,
                     Message = "Registration successful. Please check your email for confirmation instructions."
@@ -129,22 +113,36 @@ namespace MediCare.Models.Data
         }
 
 
+
+
+
+
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest req)
         {
             try
             {
                 var user = await _db.Users
-                    .Include(u => u.UserRoles)           // Include UserRoles
-                    .ThenInclude(ur => ur.Role)          // Include Role
-                    .ThenInclude(r => r.Permissions)     // Include Permissions
-                    .ThenInclude(rp => rp.Permission)    // Include Permission details
+                    .Include(u => u.UserRoles)
+                    .ThenInclude(ur => ur.Role)
                     .FirstOrDefaultAsync(u => u.Username == req.Username);
 
                 if (user == null)
                 {
                     _logger.LogWarning("Login attempt with non-existent username: {Username}", req.Username);
                     return Unauthorized("Invalid credentials");
+                }
+
+                // DEBUG: Check what roles the user actually has
+                var userRoles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
+                Console.WriteLine($"=== DEBUG LOGIN ===");
+                Console.WriteLine($"User: {user.Username}");
+                Console.WriteLine($"Roles from database: {string.Join(", ", userRoles)}");
+                Console.WriteLine($"Role count: {userRoles.Count}");
+
+                foreach (var userRole in user.UserRoles)
+                {
+                    Console.WriteLine($"Role ID: {userRole.RoleId}, Role Name: '{userRole.Role.Name}'");
                 }
 
                 // Check if email is confirmed
@@ -165,8 +163,11 @@ namespace MediCare.Models.Data
 
                 _logger.LogInformation("User logged in successfully: {Username}", user.Username);
 
-                // Get primary role for response
-                var primaryRole = user.UserRoles.FirstOrDefault()?.Role.Name ?? "Patient";
+                // FIXED: Use the same primary role logic as JWT generation
+                var primaryRole = GetPrimaryRole(userRoles);
+
+                Console.WriteLine($"Selected primary role: {primaryRole}");
+                Console.WriteLine($"=== END DEBUG ===");
 
                 return Ok(new LoginResponse(token, primaryRole, user.Username));
             }
@@ -325,38 +326,58 @@ namespace MediCare.Models.Data
             };
         }
 
+
         private string GenerateJwt(User user)
-{
-    var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]));
-    var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+        {
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]));
+            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
-    // Get user roles
-    var userRoles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
-    var primaryRole = userRoles.FirstOrDefault() ?? "Patient";
+            // Get user roles
+            var userRoles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
 
-    var claims = new List<Claim>
+            // FIXED: Get the highest priority role instead of first role
+            var primaryRole = GetPrimaryRole(userRoles);
+
+            var claims = new List<Claim>
     {
         new Claim("id", user.Id.ToString()),
         new Claim("username", user.Username),
         new Claim("email", user.Email),
-        new Claim("primary_role", primaryRole),
+        new Claim("primary_role", primaryRole), // ✅ Now shows correct role
         new Claim("email_confirmed", user.IsEmailConfirmed.ToString())
     };
 
-    // Add all roles as claims (for [Authorize(Roles = "X")] to work)
-    foreach (var role in userRoles)
+            // Add all roles as claims (for [Authorize(Roles = "X")] to work)
+            foreach (var role in userRoles)
+            {
+                claims.Add(new Claim(ClaimTypes.Role, role));
+            }
+
+            var token = new JwtSecurityToken(
+                issuer: _config["Jwt:Issuer"],
+                audience: _config["Jwt:Audience"],
+                claims: claims,
+                expires: DateTime.UtcNow.AddHours(8),
+                signingCredentials: creds);
+
+            return new JwtSecurityTokenHandler().WriteToken(token);
+        }
+
+        // ADD THIS HELPER METHOD
+        private string GetPrimaryRole(List<string> roles)
+        {
+            // Define role priority (highest to lowest)
+            var rolePriority = new Dictionary<string, int>
     {
-        claims.Add(new Claim(ClaimTypes.Role, role));
-    }
+        { RoleConstants.SuperAdmin, 4 },
+        { RoleConstants.Doctor, 3 },
+        { RoleConstants.Nurse, 2 },
+        { RoleConstants.Patient, 1 }
+    };
 
-    var token = new JwtSecurityToken(
-        issuer: _config["Jwt:Issuer"],
-        audience: _config["Jwt:Audience"],
-        claims: claims,
-        expires: DateTime.UtcNow.AddHours(8),
-        signingCredentials: creds);
-
-    return new JwtSecurityTokenHandler().WriteToken(token);
-}
+            // Return the highest priority role
+            return roles.OrderByDescending(r => rolePriority.GetValueOrDefault(r, 0))
+                        .FirstOrDefault() ?? RoleConstants.Patient;
+        }
     }
 }

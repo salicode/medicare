@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 
-namespace MediCare.Models.Data
+namespace MediCare.Models.Entities
 {
     [ApiController]
     [Route("api/[controller]")]
@@ -54,29 +54,30 @@ namespace MediCare.Models.Data
             return Ok(patient);
         }
 
-       
+
 
         [HttpPost("{id:guid}/vitals")]
-[Authorize(Roles = "Doctor,Nurse,SuperAdmin")] // Use role-based authorization
-public async Task<IActionResult> AddVital(Guid id, [FromBody] Vital vital)
-{
-    // Ensure patient exists
-    var patient = await _db.PatientRecords.FindAsync(id);
-    if (patient == null) return NotFound();
+        [Authorize(Roles = $"{RoleConstants.Doctor},{RoleConstants.Nurse},{RoleConstants.SuperAdmin}")]
+        public async Task<IActionResult> AddVital(Guid id, [FromBody] Vital vital)
+        {
+            // Ensure patient exists
+            var patient = await _db.PatientRecords.FindAsync(id);
+            if (patient == null) return NotFound();
 
-    // Check if user is assigned to this patient
-    var userId = Guid.Parse(User.FindFirst("id")!.Value);
-    var isAssigned = await _db.UserPatientAssignments
-        .AnyAsync(a => a.UserId == userId && a.PatientRecordId == id);
-    
-    if (!isAssigned && !User.IsInRole("SuperAdmin"))
-        return Forbid();
+            // Check if user is assigned to this patient
+            var userId = Guid.Parse(User.FindFirst("id")!.Value);
+            var isAssigned = await _db.UserPatientAssignments
+                .AnyAsync(a => a.UserId == userId && a.PatientRecordId == id);
 
-    vital.PatientRecordId = id;
-    _db.Vitals.Add(vital);
-    await _db.SaveChangesAsync();
-    return Ok(vital);
-}
+            // Use constant for role check
+            if (!isAssigned && !User.IsInRole(RoleConstants.SuperAdmin))
+                return Forbid();
+
+            vital.PatientRecordId = id;
+            _db.Vitals.Add(vital);
+            await _db.SaveChangesAsync();
+            return Ok(vital);
+        }
 
         // Doctor prescribes medication
         [HttpPost("{id:guid}/prescriptions")]
@@ -111,5 +112,5 @@ public async Task<IActionResult> AddVital(Guid id, [FromBody] Vital vital)
         }
     }
 
-    
+
 }

@@ -1,6 +1,7 @@
+using MediCare.MediCare;
 using Microsoft.EntityFrameworkCore;
-
-namespace MediCare.Models.Data
+using MediCare.Models.Entities;
+namespace MediCare.Models.Entities
 {
     public class ApplicationDbContext : DbContext
     {
@@ -20,6 +21,11 @@ namespace MediCare.Models.Data
         public DbSet<Permission> Permissions => Set<Permission>();
         public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
         public DbSet<UserRole> UserRoles => Set<UserRole>();
+        public DbSet<Specialization> Specializations => Set<Specialization>();
+    public DbSet<Doctor> Doctors => Set<Doctor>();
+    public DbSet<DoctorAvailability> DoctorAvailabilities => Set<DoctorAvailability>();
+    public DbSet<Consultation> Consultations => Set<Consultation>();
+    public DbSet<ConsultationDocument> ConsultationDocuments => Set<ConsultationDocument>();
 
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -80,6 +86,32 @@ namespace MediCare.Models.Data
                 .HasOne(ur => ur.Role)
                 .WithMany(r => r.UserRoles)
                 .HasForeignKey(ur => ur.RoleId);
+
+            modelBuilder.Entity<Specialization>()
+            .HasIndex(s => s.Name)
+            .IsUnique();
+
+        modelBuilder.Entity<Doctor>()
+            .HasIndex(d => d.UserId)
+            .IsUnique();
+
+        modelBuilder.Entity<Doctor>()
+            .HasOne(d => d.User)
+            .WithOne()
+            .HasForeignKey<Doctor>(d => d.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DoctorAvailability>()
+            .HasIndex(da => new { da.DoctorId, da.DayOfWeek, da.StartTime })
+            .IsUnique();
+
+        modelBuilder.Entity<Consultation>()
+            .HasIndex(c => new { c.DoctorId, c.ScheduledAt })
+            .IsUnique();
+
+        modelBuilder.Entity<Consultation>()
+            .HasIndex(c => new { c.PatientRecordId, c.ScheduledAt });
+    
         }
 
 

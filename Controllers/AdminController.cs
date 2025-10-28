@@ -1,14 +1,12 @@
-
-
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 
-namespace MediCare.Models.Data
+namespace MediCare.Models.Entities
 {
     [ApiController]
     [Route("api/[controller]")]
-    [Authorize(Roles = "SuperAdmin")]
+    [Authorize(Roles = RoleConstants.SuperAdmin)]
     public class AdminController : ControllerBase
     {
         private readonly ApplicationDbContext _db;
@@ -16,7 +14,7 @@ namespace MediCare.Models.Data
         private readonly ILogger<AdminController> _logger;
 
         public AdminController(
-            ApplicationDbContext db, 
+            ApplicationDbContext db,
             Microsoft.AspNetCore.Identity.IPasswordHasher<User> hasher,
             ILogger<AdminController> logger)
         {
@@ -33,17 +31,17 @@ namespace MediCare.Models.Data
                 var users = await _db.Users
                     .Include(u => u.UserRoles)
                     .ThenInclude(ur => ur.Role)
-                    .Select(u => new 
-                    { 
-                        u.Id, 
-                        u.Username, 
-                        u.Email, 
+                    .Select(u => new
+                    {
+                        u.Id,
+                        u.Username,
+                        u.Email,
                         Roles = u.UserRoles.Select(ur => ur.Role.Name).ToList(),
-                        u.IsEmailConfirmed, 
-                        u.CreatedAt 
+                        u.IsEmailConfirmed,
+                        u.CreatedAt
                     })
                     .ToListAsync();
-                    
+
                 return Ok(users);
             }
             catch (Exception ex)
@@ -54,7 +52,7 @@ namespace MediCare.Models.Data
         }
 
         [HttpPost("users")]
-        public async Task<IActionResult> CreateUser([FromBody]  RegisterRequest req) 
+        public async Task<IActionResult> CreateUser([FromBody] AdminCreateUserRequest req)
         {
             try
             {
@@ -67,42 +65,72 @@ namespace MediCare.Models.Data
                 if (!IsPasswordStrong(req.Password))
                     return BadRequest("Password does not meet strength requirements");
 
-                // Validate role exists
-                var role = await _db.Roles.FirstOrDefaultAsync(r => r.Id == req.RoleId);
+                // Validate role is a valid system role
+                if (!RoleConstants.AllRoles.Contains(req.Role))
+                    return BadRequest($"Invalid role. Must be one of: {string.Join(", ", RoleConstants.AllRoles)}");
+
+                // Get role from name (not ID)
+                var role = await _db.Roles.FirstOrDefaultAsync(r => r.Name == req.Role && r.IsSystemRole);
                 if (role == null)
-                    return BadRequest("Invalid role");
+                    return BadRequest("Invalid system role");
+
+                // Validate PatientProfileId for patient roles
+                if (req.Role == RoleConstants.Patient && !req.PatientProfileId.HasValue)
+                    return BadRequest("PatientProfileId is required for patient roles");
+
+                if (req.Role != RoleConstants.Patient && req.PatientProfileId.HasValue)
+                    return BadRequest("PatientProfileId should only be provided for patient roles");
 
                 // Create user
-                var user = new User 
-                { 
-                    Username = req.Username, 
+                var user = new User
+                {
+                    Username = req.Username,
                     Email = req.Email,
                     PatientProfileId = req.PatientProfileId,
                     IsEmailConfirmed = true // Admin-created users are auto-confirmed
                 };
-                
+
                 user.PasswordHash = _hasher.HashPassword(user, req.Password);
                 _db.Users.Add(user);
                 await _db.SaveChangesAsync();
 
-                // Assign role to user
+                // Assign role
                 var userRole = new UserRole
                 {
                     UserId = user.Id,
-                    RoleId = req.RoleId,
+                    RoleId = role.Id,
                     AssignedAt = DateTime.UtcNow,
-                    AssignedByUserId = Guid.Parse(User.FindFirst("id")!.Value) // Current admin user
+                    AssignedByUserId = Guid.Parse(User.FindFirst("id")!.Value)
                 };
                 _db.UserRoles.Add(userRole);
+
+                // If creating a doctor, also create a Doctor profile
+                if (req.Role == RoleConstants.Doctor)
+                {
+                    var doctor = new Doctor
+                    {
+                        UserId = user.Id,
+                        FullName = req.Username, // Default to username, can be updated later
+                        SpecializationId = await GetDefaultSpecializationId(),
+                        YearsOfExperience = 0,
+                        ConsultationFee = 0,
+                        IsActive = true
+                    };
+                    _db.Doctors.Add(doctor);
+                }
+
                 await _db.SaveChangesAsync();
-                
-                _logger.LogInformation("Admin created user: {Username}", user.Username);
-                
-                return Ok(new { 
-                    user.Id, 
-                    user.Username, 
-                    user.Email, 
-                    Role = role.Name 
+
+                _logger.LogInformation("Admin created user: {Username} with role: {Role}", user.Username, req.Role);
+
+                return Ok(new
+                {
+                    user.Id,
+                    user.Username,
+                    user.Email,
+                    Role = role.Name,
+                    user.PatientProfileId,
+                    user.CreatedAt
                 });
             }
             catch (Exception ex)
@@ -112,28 +140,168 @@ namespace MediCare.Models.Data
             }
         }
 
+        [HttpPost("doctors")]
+        public async Task<IActionResult> CreateDoctor([FromBody] CreateDoctorRequest req)
+        {
+            try
+            {
+                // Verify user exists and has Doctor role
+                var user = await _db.Users
+                    .Include(u => u.UserRoles)
+                    .ThenInclude(ur => ur.Role)
+                    .FirstOrDefaultAsync(u => u.Id == req.UserId);
+
+                if (user == null)
+                    return NotFound("User not found");
+
+                if (!user.UserRoles.Any(ur => ur.Role.Name == RoleConstants.Doctor))
+                    return BadRequest("User does not have Doctor role");
+
+                // Check if doctor profile already exists
+                if (await _db.Doctors.AnyAsync(d => d.UserId == req.UserId))
+                    return BadRequest("Doctor profile already exists for this user");
+
+                // Verify specialization exists
+                var specialization = await _db.Specializations.FindAsync(req.SpecializationId);
+                if (specialization == null)
+                    return BadRequest("Invalid specialization");
+
+                var doctor = new Doctor
+                {
+                    UserId = req.UserId,
+                    FullName = req.FullName,
+                    SpecializationId = req.SpecializationId,
+                    PhoneNumber = req.PhoneNumber,
+                    Bio = req.Bio,
+                    YearsOfExperience = req.YearsOfExperience,
+                    ConsultationFee = req.ConsultationFee,
+                    IsActive = true
+                };
+
+                _db.Doctors.Add(doctor);
+                await _db.SaveChangesAsync();
+
+                _logger.LogInformation("Admin created doctor profile for user: {UserId}", req.UserId);
+
+                return Ok(new
+                {
+                    doctor.Id,
+                    doctor.FullName,
+                    Specialization = specialization.Name,
+                    doctor.YearsOfExperience,
+                    doctor.ConsultationFee
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating doctor profile for user {UserId}", req.UserId);
+                return StatusCode(500, "An error occurred while creating doctor profile");
+            }
+        }
+
+        [HttpGet("doctors")]
+        public async Task<IActionResult> GetDoctors()
+        {
+            try
+            {
+                var doctors = await _db.Doctors
+                    .Include(d => d.User)
+                    .Include(d => d.Specialization)
+                    .Select(d => new
+                    {
+                        d.Id,
+                        d.FullName,
+                        d.YearsOfExperience,
+                        d.ConsultationFee,
+                        d.Bio,
+                        d.PhoneNumber,
+                        d.IsActive,
+                        Specialization = d.Specialization.Name,
+                        Username = d.User.Username,
+                        Email = d.User.Email,
+                        UserId = d.UserId
+                    })
+                    .ToListAsync();
+
+                return Ok(doctors);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving doctors");
+                return StatusCode(500, "An error occurred while retrieving doctors");
+            }
+        }
+
+        [HttpGet("nurses")]
+        public async Task<IActionResult> GetNurses()
+        {
+            try
+            {
+                var nurses = await _db.Users
+                    .Include(u => u.UserRoles)
+                    .ThenInclude(ur => ur.Role)
+                    .Where(u => u.UserRoles.Any(ur => ur.Role.Name == RoleConstants.Nurse))
+                    .Select(u => new
+                    {
+                        u.Id,
+                        u.Username,
+                        u.Email,
+                        u.IsEmailConfirmed,
+                        u.CreatedAt
+                    })
+                    .ToListAsync();
+
+                return Ok(nurses);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving nurses");
+                return StatusCode(500, "An error occurred while retrieving nurses");
+            }
+        }
+
         [HttpDelete("users/{id:guid}")]
         public async Task<IActionResult> DeleteUser(Guid id)
         {
             try
             {
                 var user = await _db.Users
-                    .Include(u => u.UserRoles) // ADDED: Include UserRoles for cleanup
+                    .Include(u => u.UserRoles)
+                    .Include(u => u.PatientProfileId.HasValue ? u : null)
                     .FirstOrDefaultAsync(u => u.Id == id);
-                    
-                if (user == null) 
+
+                if (user == null)
                 {
                     _logger.LogWarning("Attempt to delete non-existent user {UserId}", id);
                     return NotFound();
                 }
-                
+
+                // Remove doctor profile if exists
+                var doctor = await _db.Doctors.FirstOrDefaultAsync(d => d.UserId == id);
+                if (doctor != null)
+                {
+                    // Remove doctor availabilities first
+                    var availabilities = await _db.DoctorAvailabilities
+                        .Where(da => da.DoctorId == doctor.Id)
+                        .ToListAsync();
+                    _db.DoctorAvailabilities.RemoveRange(availabilities);
+
+                    _db.Doctors.Remove(doctor);
+                }
+
                 // Remove user roles first (due to foreign key constraints)
                 _db.UserRoles.RemoveRange(user.UserRoles);
-                
+
+                // Remove user-patient assignments
+                var assignments = await _db.UserPatientAssignments
+                    .Where(a => a.UserId == id)
+                    .ToListAsync();
+                _db.UserPatientAssignments.RemoveRange(assignments);
+
                 // Then remove the user
                 _db.Users.Remove(user);
                 await _db.SaveChangesAsync();
-                
+
                 _logger.LogInformation("Admin deleted user: {Username}", user.Username);
                 return NoContent();
             }
@@ -144,10 +312,151 @@ namespace MediCare.Models.Data
             }
         }
 
+        private async Task<Guid> GetDefaultSpecializationId()
+        {
+            var defaultSpecialization = await _db.Specializations
+                .FirstOrDefaultAsync(s => s.Name == "General Practice");
+
+            if (defaultSpecialization != null)
+                return defaultSpecialization.Id;
+
+            // Create default specialization if none exists
+            var specialization = new Specialization
+            {
+                Name = "General Practice",
+                Description = "Primary care and general medicine"
+            };
+            _db.Specializations.Add(specialization);
+            await _db.SaveChangesAsync();
+
+            return specialization.Id;
+        }
+
+        // Add these methods to your existing AdminController class
+
+        [HttpPost("specializations")]
+        public async Task<IActionResult> CreateSpecialization([FromBody] CreateSpecializationRequest request)
+        {
+            try
+            {
+                if (await _db.Specializations.AnyAsync(s => s.Name == request.Name))
+                    return BadRequest("Specialization with this name already exists");
+
+                var specialization = new Specialization
+                {
+                    Name = request.Name,
+                    Description = request.Description
+                };
+
+                _db.Specializations.Add(specialization);
+                await _db.SaveChangesAsync();
+
+                _logger.LogInformation("Admin created specialization: {SpecializationName}", request.Name);
+
+                return Ok(new SpecializationResponse(
+                    specialization.Id,
+                    specialization.Name,
+                    specialization.Description,
+                    specialization.CreatedAt
+                ));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating specialization {SpecializationName}", request.Name);
+                return StatusCode(500, "An error occurred while creating specialization");
+            }
+        }
+
+        [HttpGet("specializations")]
+        public async Task<IActionResult> GetSpecializations()
+        {
+            try
+            {
+                var specializations = await _db.Specializations
+                    .OrderBy(s => s.Name)
+                    .Select(s => new SpecializationResponse(
+                        s.Id,
+                        s.Name,
+                        s.Description,
+                        s.CreatedAt
+                    ))
+                    .ToListAsync();
+
+                return Ok(specializations);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving specializations");
+                return StatusCode(500, "An error occurred while retrieving specializations");
+            }
+        }
+
+        [HttpPut("specializations/{id:guid}")]
+        public async Task<IActionResult> UpdateSpecialization(Guid id, [FromBody] UpdateSpecializationRequest request)
+        {
+            try
+            {
+                var specialization = await _db.Specializations.FindAsync(id);
+                if (specialization == null)
+                    return NotFound("Specialization not found");
+
+                if (await _db.Specializations.AnyAsync(s => s.Name == request.Name && s.Id != id))
+                    return BadRequest("Another specialization with this name already exists");
+
+                specialization.Name = request.Name;
+                specialization.Description = request.Description;
+
+                await _db.SaveChangesAsync();
+
+                _logger.LogInformation("Admin updated specialization: {SpecializationName}", request.Name);
+
+                return Ok(new SpecializationResponse(
+                    specialization.Id,
+                    specialization.Name,
+                    specialization.Description,
+                    specialization.CreatedAt
+                ));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating specialization {SpecializationId}", id);
+                return StatusCode(500, "An error occurred while updating specialization");
+            }
+        }
+
+        [HttpDelete("specializations/{id:guid}")]
+        public async Task<IActionResult> DeleteSpecialization(Guid id)
+        {
+            try
+            {
+                var specialization = await _db.Specializations
+                    .Include(s => s.Doctors)
+                    .FirstOrDefaultAsync(s => s.Id == id);
+
+                if (specialization == null)
+                    return NotFound("Specialization not found");
+
+                if (specialization.Doctors.Any())
+                    return BadRequest("Cannot delete specialization that has doctors assigned to it");
+
+                _db.Specializations.Remove(specialization);
+                await _db.SaveChangesAsync();
+
+                _logger.LogInformation("Admin deleted specialization: {SpecializationName}", specialization.Name);
+
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting specialization {SpecializationId}", id);
+                return StatusCode(500, "An error occurred while deleting specialization");
+            }
+        }
+
         private bool IsPasswordStrong(string password)
         {
-            return password.Length >= 8 && 
-                   password.Any(char.IsDigit) && 
+            return password.Length >= 8 &&
+                   password.Any(char.IsDigit) &&
                    password.Any(char.IsUpper) &&
                    password.Any(char.IsLower);
         }

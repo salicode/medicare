@@ -1,9 +1,7 @@
-
-
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 
-namespace MediCare.Models.Data
+namespace MediCare.Models.Entities
 {
     public enum PatientAuthorizationOperation { View, Update, Prescribe }
 

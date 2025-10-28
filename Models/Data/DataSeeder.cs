@@ -1,10 +1,11 @@
 
-
+using MediCare.MediCare;
+using MediCare.Models.Entities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using System.Linq;
 
-namespace MediCare.Models.Data
+namespace MediCare.Models.Entities
 {
     public static class DataSeeder
     {
@@ -13,19 +14,139 @@ namespace MediCare.Models.Data
             // Ensure database is created and migrations are applied
             context.Database.EnsureCreated();
 
-            // Seed in correct order: Permissions -> Roles -> Users
-            SeedPermissions(context); // ADD THIS LINE - MUST BE BEFORE ROLES
+            // Seed in correct order
+            SeedPermissions(context);
             SeedRoles(context);
+            SeedSpecializations(context); // ADD THIS
 
             // Seed default admin user
             if (!context.Users.Any(u => u.Username == "admin"))
             {
                 SeedAdminUser(context, hasher);
                 SeedSampleUsers(context, hasher);
+                SeedDoctorProfiles(context); // ADD THIS
+                SeedSampleConsultations(context); // ADD THIS
             }
         }
 
-        // ADD THIS ENTIRE METHOD
+        // ADD THIS METHOD - Seed Specializations
+        private static void SeedSpecializations(ApplicationDbContext context)
+        {
+            if (!context.Specializations.Any())
+            {
+                var specializations = new[]
+                {
+                    new Specialization { Name = "Cardiology", Description = "Heart and cardiovascular system" },
+                    new Specialization { Name = "Dermatology", Description = "Skin, hair, and nails" },
+                    new Specialization { Name = "Pediatrics", Description = "Children's health" },
+                    new Specialization { Name = "Orthopedics", Description = "Bones and muscles" },
+                    new Specialization { Name = "Neurology", Description = "Nervous system" },
+                    new Specialization { Name = "Psychiatry", Description = "Mental health" },
+                    new Specialization { Name = "General Practice", Description = "Primary care" }
+                };
+
+                context.Specializations.AddRange(specializations);
+                context.SaveChanges();
+            }
+        }
+
+        // ADD THIS METHOD - Seed Doctor Profiles
+        private static void SeedDoctorProfiles(ApplicationDbContext context)
+        {
+            var doctorUser = context.Users.FirstOrDefault(u => u.Username == "drjohn");
+            var defaultSpecialization = context.Specializations.FirstOrDefault(s => s.Name == "General Practice");
+
+            if (doctorUser != null && defaultSpecialization != null && 
+                !context.Doctors.Any(d => d.UserId == doctorUser.Id))
+            {
+                var doctor = new Doctor
+                {
+                    UserId = doctorUser.Id,
+                    FullName = "Dr. John Smith",
+                    SpecializationId = defaultSpecialization.Id,
+                    PhoneNumber = "+1234567890",
+                    Bio = "Experienced general practitioner with 8 years of practice.",
+                    YearsOfExperience = 8,
+                    ConsultationFee = 100.00m,
+                    IsActive = true
+                };
+
+                context.Doctors.Add(doctor);
+                context.SaveChanges();
+
+                // Add sample availability
+                SeedDoctorAvailability(context, doctor.Id);
+            }
+        }
+
+        // ADD THIS METHOD - Seed Doctor Availability
+        private static void SeedDoctorAvailability(ApplicationDbContext context, Guid doctorId)
+        {
+            if (!context.DoctorAvailabilities.Any(da => da.DoctorId == doctorId))
+            {
+                var availabilities = new[]
+                {
+                    new DoctorAvailability 
+                    { 
+                        DoctorId = doctorId, 
+                        DayOfWeek = DayOfWeek.Monday, 
+                        StartTime = TimeSpan.FromHours(9), 
+                        EndTime = TimeSpan.FromHours(17),
+                        IsRecurring = true,
+                        MaxAppointmentsPerSlot = 4
+                    },
+                    new DoctorAvailability 
+                    { 
+                        DoctorId = doctorId, 
+                        DayOfWeek = DayOfWeek.Wednesday, 
+                        StartTime = TimeSpan.FromHours(9), 
+                        EndTime = TimeSpan.FromHours(17),
+                        IsRecurring = true,
+                        MaxAppointmentsPerSlot = 4
+                    },
+                    new DoctorAvailability 
+                    { 
+                        DoctorId = doctorId, 
+                        DayOfWeek = DayOfWeek.Friday, 
+                        StartTime = TimeSpan.FromHours(9), 
+                        EndTime = TimeSpan.FromHours(17),
+                        IsRecurring = true,
+                        MaxAppointmentsPerSlot = 4
+                    }
+                };
+
+                context.DoctorAvailabilities.AddRange(availabilities);
+                context.SaveChanges();
+            }
+        }
+
+        // ADD THIS METHOD - Seed Sample Consultations
+        private static void SeedSampleConsultations(ApplicationDbContext context)
+        {
+            var doctor = context.Doctors.FirstOrDefault(d => d.UserId == context.Users.First(u => u.Username == "drjohn").Id);
+            var patientRecord = context.PatientRecords.FirstOrDefault();
+            var nurseUser = context.Users.FirstOrDefault(u => u.Username == "nursemary");
+
+            if (doctor != null && patientRecord != null && !context.Consultations.Any())
+            {
+                var consultation = new Consultation
+                {
+                    PatientRecordId = patientRecord.Id,
+                    DoctorId = doctor.Id,
+                    NurseId = nurseUser?.Id,
+                    ScheduledAt = DateTime.UtcNow.AddDays(1).Date.AddHours(10), // Tomorrow at 10 AM
+                    Duration = TimeSpan.FromMinutes(30),
+                    ConsultationType = ConsultationType.InPerson,
+                    Status = AppointmentStatus.Confirmed,
+                    Symptoms = "Regular health checkup and consultation",
+                    Fee = doctor.ConsultationFee
+                };
+
+                context.Consultations.Add(consultation);
+                context.SaveChanges();
+            }
+        }
+
         private static void SeedPermissions(ApplicationDbContext context)
         {
             var permissions = new[]
@@ -55,7 +176,16 @@ namespace MediCare.Models.Data
                 
                 new { Name = "testresults.create", Description = "Create test results", Category = "TestResults" },
                 new { Name = "testresults.view", Description = "View test results", Category = "TestResults" },
-                new { Name = "testresults.edit", Description = "Edit test results", Category = "TestResults" }
+                new { Name = "testresults.edit", Description = "Edit test results", Category = "TestResults" },
+
+                // ADD NEW PERMISSIONS FOR CONSULTATION SYSTEM
+                new { Name = "doctors.view", Description = "View doctors", Category = "Doctors" },
+                new { Name = "doctors.create", Description = "Create doctors", Category = "Doctors" },
+                new { Name = "doctors.edit", Description = "Edit doctors", Category = "Doctors" },
+                new { Name = "consultations.book", Description = "Book consultations", Category = "Consultations" },
+                new { Name = "consultations.view", Description = "View consultations", Category = "Consultations" },
+                new { Name = "consultations.update", Description = "Update consultations", Category = "Consultations" },
+                new { Name = "availability.manage", Description = "Manage availability", Category = "Doctors" }
             };
 
             foreach (var perm in permissions)
@@ -79,7 +209,6 @@ namespace MediCare.Models.Data
             var superAdminRole = context.Roles.FirstOrDefault(r => r.Name == "SuperAdmin");
             if (superAdminRole == null)
             {
-                // This shouldn't happen if roles were seeded properly
                 throw new InvalidOperationException("SuperAdmin role not found. Please run database migrations first.");
             }
 
@@ -95,7 +224,6 @@ namespace MediCare.Models.Data
             context.Users.Add(admin);
             context.SaveChanges();
 
-            // Assign SuperAdmin role to admin user
             var adminUserRole = new UserRole
             {
                 UserId = admin.Id,
@@ -108,7 +236,6 @@ namespace MediCare.Models.Data
 
         private static void SeedSampleUsers(ApplicationDbContext context, IPasswordHasher<User> hasher)
         {
-            // Get roles
             var doctorRole = context.Roles.FirstOrDefault(r => r.Name == "Doctor");
             var nurseRole = context.Roles.FirstOrDefault(r => r.Name == "Nurse");
             var patientRole = context.Roles.FirstOrDefault(r => r.Name == "Patient");
@@ -176,7 +303,6 @@ namespace MediCare.Models.Data
 
         private static void SeedPatientUser(ApplicationDbContext context, IPasswordHasher<User> hasher, Role? patientRole)
         {
-            // First create patient record
             var patientRecord = new PatientRecord
             {
                 Id = Guid.NewGuid(),
@@ -186,14 +312,13 @@ namespace MediCare.Models.Data
             context.PatientRecords.Add(patientRecord);
             context.SaveChanges();
 
-            // Then create patient user
             var patient = new User
             {
                 Username = "patient1",
                 Email = "patient1@medicare.com",
                 PasswordHash = hasher.HashPassword(null!, "Patient@123"),
-                PatientProfileId = patientRecord.Id, // Link to patient record
-                IsEmailConfirmed = false, // Patient needs to confirm email
+                PatientProfileId = patientRecord.Id,
+                IsEmailConfirmed = true, // Set to true for testing
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -211,17 +336,14 @@ namespace MediCare.Models.Data
                 context.SaveChanges();
             }
 
-            // Create sample assignments for doctors/nurses to this patient
             SeedSampleAssignments(context, patientRecord.Id);
         }
 
         private static void SeedSampleAssignments(ApplicationDbContext context, Guid patientRecordId)
         {
-            // Get doctor and nurse users
             var doctor = context.Users.FirstOrDefault(u => u.Username == "drjohn");
             var nurse = context.Users.FirstOrDefault(u => u.Username == "nursemary");
 
-            // Assign doctor to patient
             if (doctor != null && !context.UserPatientAssignments.Any(a => a.UserId == doctor.Id && a.PatientRecordId == patientRecordId))
             {
                 context.UserPatientAssignments.Add(new UserPatientAssignment
@@ -231,7 +353,6 @@ namespace MediCare.Models.Data
                 });
             }
 
-            // Assign nurse to patient
             if (nurse != null && !context.UserPatientAssignments.Any(a => a.UserId == nurse.Id && a.PatientRecordId == patientRecordId))
             {
                 context.UserPatientAssignments.Add(new UserPatientAssignment
