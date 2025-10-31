@@ -1,12 +1,15 @@
- ﻿using System;
+using System;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
 using MediCare.MediCare;
 using MediCare.Models.Entities;
-using MediCare.Models.DTOs.Consultations; 
-using MediCare.Models.DTOs.Auth; 
+using MediCare.Models.DTOs.Consultations;
+
+using MediCare.Models.DTOs.Auth;
+using MediCare.Helpers;
+using System.Linq;
 
 namespace MediCare.Models.Entities
 {
@@ -21,7 +24,7 @@ namespace MediCare.Models.Entities
         private readonly ILogger<ConsultationsController> _logger;
 
         public ConsultationsController(
-            ApplicationDbContext db, 
+            ApplicationDbContext db,
             IEmailService emailService,
             IAuthorizationService auth,
             ILogger<ConsultationsController> logger)
@@ -32,6 +35,73 @@ namespace MediCare.Models.Entities
             _logger = logger;
         }
 
+        // [HttpPost("book")]
+        // [Authorize(Roles = RoleConstants.Patient)]
+        // public async Task<IActionResult> BookConsultation([FromBody] BookConsultationRequest request)
+        // {
+        //     try
+        //     {
+        //         var currentUserId = Guid.Parse(User.FindFirst("id")!.Value);
+
+        //         // Verify patient record exists and belongs to current user
+        //         var patientRecord = await _db.PatientRecords
+        //             .FirstOrDefaultAsync(p => p.Id == request.PatientRecordId);
+
+        //         if (patientRecord == null)
+        //             return NotFound("Patient record not found");
+
+        //         // Check if patient record belongs to current user
+        //         var user = await _db.Users.FindAsync(currentUserId);
+        //         if (user?.PatientProfileId != request.PatientRecordId)
+        //             return Forbid("You can only book consultations for your own patient record");
+
+        //         // Verify doctor exists and is active
+        //         var doctor = await _db.Doctors
+        //             .Include(d => d.User)
+        //             .Include(d => d.Specialization)
+        //             .FirstOrDefaultAsync(d => d.Id == request.DoctorId && d.IsActive);
+
+        //         if (doctor == null)
+        //             return NotFound("Doctor not found");
+
+        //         // Check if slot is available
+        //         var isSlotAvailable = await IsTimeSlotAvailable(request.DoctorId, request.ScheduledAt);
+        //         if (!isSlotAvailable)
+        //             return BadRequest("Selected time slot is not available");
+
+        //         var consultation = new Consultation
+        //         {
+        //             PatientRecordId = request.PatientRecordId,
+        //             DoctorId = request.DoctorId,
+        //             ScheduledAt = request.ScheduledAt,
+        //             Duration = TimeSpan.FromMinutes(30),
+        //             ConsultationType = (ConsultationType)request.ConsultationType,
+        //             Status = AppointmentStatus.Pending,
+        //             Symptoms = request.Symptoms,
+        //             Fee = doctor.ConsultationFee
+        //         };
+
+        //         _db.Consultations.Add(consultation);
+        //         await _db.SaveChangesAsync();
+
+        //         // Send confirmation emails to both patient and doctor
+        //         await SendAppointmentConfirmationEmails(consultation, doctor, user);
+
+        //         _logger.LogInformation("Consultation booked: {ConsultationId} by user {UserId}", consultation.Id, currentUserId);
+
+        //         return Ok(new
+        //         {
+        //             ConsultationId = consultation.Id,
+        //             Message = "Consultation booked successfully"
+        //         });
+        //     }
+        //     catch (Exception ex)
+        //     {
+        //         _logger.LogError(ex, "Error booking consultation");
+        //         return StatusCode(500, "An error occurred while booking consultation");
+        //     }
+        // }
+
         [HttpPost("book")]
         [Authorize(Roles = RoleConstants.Patient)]
         public async Task<IActionResult> BookConsultation([FromBody] BookConsultationRequest request)
@@ -39,12 +109,23 @@ namespace MediCare.Models.Entities
             try
             {
                 var currentUserId = Guid.Parse(User.FindFirst("id")!.Value);
-                
-                // Verify patient record exists and belongs to current user
-                var patientRecord = await _db.PatientRecords
-                    .FirstOrDefaultAsync(p => p.Id == request.PatientRecordId);
 
-                if (patientRecord == null) 
+                // FIX: Convert scheduledAt to UTC
+                var scheduledAtUtc = request.ScheduledAt;
+                if (scheduledAtUtc.Kind == DateTimeKind.Unspecified)
+                {
+                    scheduledAtUtc = DateTime.SpecifyKind(scheduledAtUtc, DateTimeKind.Utc);
+                }
+                else if (scheduledAtUtc.Kind == DateTimeKind.Local)
+                {
+                    scheduledAtUtc = scheduledAtUtc.ToUniversalTime();
+                }
+
+                // Verify patient record exists and belongs to current user
+                var patientRecordExists = await _db.PatientRecords
+                    .AnyAsync(p => p.Id == request.PatientRecordId);
+
+                if (!patientRecordExists)
                     return NotFound("Patient record not found");
 
                 // Check if patient record belongs to current user
@@ -57,20 +138,20 @@ namespace MediCare.Models.Entities
                     .Include(d => d.User)
                     .Include(d => d.Specialization)
                     .FirstOrDefaultAsync(d => d.Id == request.DoctorId && d.IsActive);
-                
-                if (doctor == null) 
+
+                if (doctor == null)
                     return NotFound("Doctor not found");
 
-                // Check if slot is available
-                var isSlotAvailable = await IsTimeSlotAvailable(request.DoctorId, request.ScheduledAt);
-                if (!isSlotAvailable) 
+                // Check if slot is available - pass the UTC time
+                var isSlotAvailable = await IsTimeSlotAvailable(request.DoctorId, scheduledAtUtc);
+                if (!isSlotAvailable)
                     return BadRequest("Selected time slot is not available");
 
                 var consultation = new Consultation
                 {
                     PatientRecordId = request.PatientRecordId,
                     DoctorId = request.DoctorId,
-                    ScheduledAt = request.ScheduledAt,
+                    ScheduledAt = scheduledAtUtc, // Use UTC time
                     Duration = TimeSpan.FromMinutes(30),
                     ConsultationType = (ConsultationType)request.ConsultationType,
                     Status = AppointmentStatus.Pending,
@@ -86,9 +167,10 @@ namespace MediCare.Models.Entities
 
                 _logger.LogInformation("Consultation booked: {ConsultationId} by user {UserId}", consultation.Id, currentUserId);
 
-                return Ok(new { 
-                    ConsultationId = consultation.Id, 
-                    Message = "Consultation booked successfully" 
+                return Ok(new
+                {
+                    ConsultationId = consultation.Id,
+                    Message = "Consultation booked successfully"
                 });
             }
             catch (Exception ex)
@@ -109,7 +191,7 @@ namespace MediCare.Models.Entities
                     .Include(c => c.PatientRecord)
                     .Include(c => c.Doctor.User)
                     .FirstOrDefaultAsync(c => c.Id == id);
-                
+
                 if (consultation == null) return NotFound("Consultation not found");
 
                 // Verify the current user is the assigned doctor or admin
@@ -122,7 +204,7 @@ namespace MediCare.Models.Entities
                     .Include(u => u.UserRoles)
                     .ThenInclude(ur => ur.Role)
                     .FirstOrDefaultAsync(u => u.Id == request.NurseId && u.UserRoles.Any(ur => ur.Role.Name == RoleConstants.Nurse));
-                
+
                 if (nurse == null) return NotFound("Nurse not found");
 
                 consultation.NurseId = request.NurseId;
@@ -166,7 +248,7 @@ namespace MediCare.Models.Entities
                     .Include(c => c.Doctor.User)
                     .Include(c => c.Doctor.Specialization)
                     .FirstOrDefaultAsync(c => c.Id == id);
-                
+
                 if (consultation == null) return NotFound("Consultation not found");
 
                 // Verify the current user is the assigned doctor or admin
@@ -191,7 +273,7 @@ namespace MediCare.Models.Entities
                     await SendStatusUpdateEmail(consultation, oldStatus, request.Status);
                 }
 
-                _logger.LogInformation("Consultation {ConsultationId} status updated from {OldStatus} to {NewStatus}", 
+                _logger.LogInformation("Consultation {ConsultationId} status updated from {OldStatus} to {NewStatus}",
                     id, oldStatus, request.Status);
 
                 return Ok(new { Message = "Consultation status updated successfully" });
@@ -220,7 +302,7 @@ namespace MediCare.Models.Entities
                     .Include(c => c.Doctor.User)
                     .Include(c => c.Doctor.Specialization)
                     .FirstOrDefaultAsync(c => c.Id == id);
-                
+
                 if (consultation == null) return NotFound("Consultation not found");
 
                 // Verify the current user is the assigned doctor or admin
@@ -300,7 +382,7 @@ namespace MediCare.Models.Entities
                     .Include(c => c.Doctor.User)
                     .Include(c => c.Doctor.Specialization)
                     .FirstOrDefaultAsync(c => c.Id == id);
-                
+
                 if (consultation == null) return NotFound("Consultation not found");
 
                 var currentUserId = Guid.Parse(User.FindFirst("id")!.Value);
@@ -374,7 +456,7 @@ namespace MediCare.Models.Entities
                     // Doctor sees consultations assigned to them
                     var doctor = await _db.Doctors
                         .FirstOrDefaultAsync(d => d.UserId == currentUserId);
-                    
+
                     if (doctor == null) return Ok(new List<Consultation>());
 
                     query = query.Where(c => c.DoctorId == doctor.Id);
@@ -411,100 +493,12 @@ namespace MediCare.Models.Entities
             }
         }
 
-        // ========== PRIVATE EMAIL METHODS ==========
-
-        //         private async Task SendAppointmentConfirmationEmails(Consultation consultation, Doctor doctor, User patientUser)
-        //         {
-        //             try
-        //             {
-        //                 // Email to Patient
-        //                 var patientEmailBody = $@"
-        // Dear {patientUser.Username},
-
-        // Your appointment has been successfully booked with Dr. {doctor.FullName} ({doctor.Specialization.Name}).
-
-        // Appointment Details:
-        // - Date: {consultation.ScheduledAt:MMMM dd, yyyy}
-        // - Time: {consultation.ScheduledAt:hh:mm tt}
-        // - Duration: {consultation.Duration.TotalMinutes} minutes
-        // - Type: {consultation.ConsultationType}
-        // - Fee: ${consultation.Fee}
-
-        // Please arrive 10 minutes before your scheduled time.
-
-        // Thank you for choosing MediCare.
-        // ";
-
-        //                 await _emailService.SendAppointmentConfirmationAsync(patientUser.Email, patientEmailBody);
-
-        //                 // Email to Doctor
-        //                 var doctorEmailBody = $@"
-        // Dear Dr. {doctor.FullName},
-
-        // A new appointment has been booked with you.
-
-        // Appointment Details:
-        // - Patient: {patientUser.Username}
-        // - Date: {consultation.ScheduledAt:MMMM dd, yyyy}
-        // - Time: {consultation.ScheduledAt:hh:mm tt}
-        // - Duration: {consultation.Duration.TotalMinutes} minutes
-        // - Type: {consultation.ConsultationType}
-        // - Symptoms: {consultation.Symptoms ?? "Not specified"}
-
-        // Please review the patient's information before the appointment.
-
-        // MediCare System
-        // ";
-
-        //                 await _emailService.SendAppointmentConfirmationAsync(doctor.User.Email, doctorEmailBody);
-
-        //                 _logger.LogInformation("Appointment confirmation emails sent for consultation {ConsultationId}", consultation.Id);
-        //             }
-        //             catch (Exception ex)
-        //             {
-        //                 _logger.LogError(ex, "Error sending appointment confirmation emails for consultation {ConsultationId}", consultation.Id);
-        //                 // Don't throw - email failure shouldn't break the booking process
-        //             }
-        //         }
-
-        //         private async Task SendNurseAssignmentEmail(Consultation consultation, User nurse)
-        //         {
-        //             try
-        //             {
-        //                 var nurseEmailBody = $@"
-        // Dear {nurse.Username},
-
-        // You have been assigned to assist with a patient consultation.
-
-        // Consultation Details:
-        // - Patient: {consultation.PatientRecord.FullName}
-        // - Doctor: Dr. {consultation.Doctor.FullName}
-        // - Date: {consultation.ScheduledAt:MMMM dd, yyyy}
-        // - Time: {consultation.ScheduledAt:hh:mm tt}
-        // - Type: {consultation.ConsultationType}
-
-        // Please review the patient's records and be prepared to assist during the consultation.
-
-        // MediCare System
-        // ";
-
-        //                 await _emailService.SendAppointmentConfirmationAsync(nurse.Email, nurseEmailBody);
-
-        //                 _logger.LogInformation("Nurse assignment email sent to {NurseEmail} for consultation {ConsultationId}", nurse.Email, consultation.Id);
-        //             }
-        //             catch (Exception ex)
-        //             {
-        //                 _logger.LogError(ex, "Error sending nurse assignment email for consultation {ConsultationId}", consultation.Id);
-        //             }
-        //         }
-
-// Update the private email methods in your ConsultationsController
-private async Task SendAppointmentConfirmationEmails(Consultation consultation, Doctor doctor, User patientUser)
-{
-    try
-    {
-        // Email to Patient
-        var patientEmailBody = $@"
+        private async Task SendAppointmentConfirmationEmails(Consultation consultation, Doctor doctor, User patientUser)
+        {
+            try
+            {
+                // Email to Patient
+                var patientEmailBody = $@"
             <h3 style='color: #007bff;'>Appointment Confirmed!</h3>
             <p>Dear <strong>{patientUser.Username}</strong>,</p>
             
@@ -526,10 +520,10 @@ private async Task SendAppointmentConfirmationEmails(Consultation consultation, 
             
             <p>We look forward to helping you with your healthcare needs.</p>";
 
-        await _emailService.SendAppointmentConfirmationAsync(patientUser.Email, patientEmailBody);
+                await _emailService.SendAppointmentConfirmationAsync(patientUser.Email, patientEmailBody);
 
-        // Email to Doctor
-        var doctorEmailBody = $@"
+                // Email to Doctor
+                var doctorEmailBody = $@"
             <h3 style='color: #28a745;'>New Appointment Booked</h3>
             <p>Dear <strong>Dr. {doctor.FullName}</strong>,</p>
             
@@ -550,22 +544,22 @@ private async Task SendAppointmentConfirmationEmails(Consultation consultation, 
             
             <p>Please review the patient's information before the appointment.</p>";
 
-        await _emailService.SendAppointmentConfirmationAsync(doctor.User.Email, doctorEmailBody);
+                await _emailService.SendAppointmentConfirmationAsync(doctor.User.Email, doctorEmailBody);
 
-        _logger.LogInformation("Appointment confirmation emails sent for consultation {ConsultationId}", consultation.Id);
-    }
-    catch (Exception ex)
-    {
-        _logger.LogError(ex, "Error sending appointment confirmation emails for consultation {ConsultationId}", consultation.Id);
-        // Don't throw - email failure shouldn't break the booking process
-    }
-}
+                _logger.LogInformation("Appointment confirmation emails sent for consultation {ConsultationId}", consultation.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending appointment confirmation emails for consultation {ConsultationId}", consultation.Id);
+                // Don't throw - email failure shouldn't break the booking process
+            }
+        }
 
-private async Task SendNurseAssignmentEmail(Consultation consultation, User nurse)
-{
-    try
-    {
-        var nurseEmailBody = $@"
+        private async Task SendNurseAssignmentEmail(Consultation consultation, User nurse)
+        {
+            try
+            {
+                var nurseEmailBody = $@"
             <h3 style='color: #6f42c1;'>Nurse Assignment Notification</h3>
             <p>Dear <strong>{nurse.Username}</strong>,</p>
             
@@ -584,17 +578,17 @@ private async Task SendNurseAssignmentEmail(Consultation consultation, User nurs
             
             <p>Please review the patient's records and be prepared to assist during the consultation.</p>";
 
-        await _emailService.SendAppointmentConfirmationAsync(nurse.Email, nurseEmailBody);
+                await _emailService.SendAppointmentConfirmationAsync(nurse.Email, nurseEmailBody);
 
-        _logger.LogInformation("Nurse assignment email sent to {NurseEmail} for consultation {ConsultationId}", nurse.Email, consultation.Id);
-    }
-    catch (Exception ex)
-    {
-        _logger.LogError(ex, "Error sending nurse assignment email for consultation {ConsultationId}", consultation.Id);
-    }
-}
+                _logger.LogInformation("Nurse assignment email sent to {NurseEmail} for consultation {ConsultationId}", nurse.Email, consultation.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending nurse assignment email for consultation {ConsultationId}", consultation.Id);
+            }
+        }
 
-// Update other email methods similarly with HTML formatting...
+        // Update other email methods similarly with HTML formatting...
 
         private async Task SendStatusUpdateEmail(Consultation consultation, AppointmentStatus oldStatus, AppointmentStatus newStatus)
         {
@@ -606,27 +600,27 @@ private async Task SendNurseAssignmentEmail(Consultation consultation, User nurs
                 if (patientUser == null) return;
 
                 var emailBody = $@"
-Dear {patientUser.Username},
+        Dear {patientUser.Username},
 
-Your appointment status has been updated.
+        Your appointment status has been updated.
 
-Appointment Details:
-- Doctor: Dr. {consultation.Doctor.FullName} ({consultation.Doctor.Specialization.Name})
-- Date: {consultation.ScheduledAt:MMMM dd, yyyy}
-- Time: {consultation.ScheduledAt:hh:mm tt}
+        Appointment Details:
+        - Doctor: Dr. {consultation.Doctor.FullName} ({consultation.Doctor.Specialization.Name})
+        - Date: {consultation.ScheduledAt:MMMM dd, yyyy}
+        - Time: {consultation.ScheduledAt:hh:mm tt}
 
-Status changed from {oldStatus} to {newStatus}.
+        Status changed from {oldStatus} to {newStatus}.
 
-";
+        ";
 
                 if (newStatus == AppointmentStatus.Completed && !string.IsNullOrEmpty(consultation.TreatmentPlan))
                 {
                     emailBody += $@"
-Treatment Plan:
-{consultation.TreatmentPlan}
+            Treatment Plan:
+            {consultation.TreatmentPlan}
 
-Please follow the above instructions and contact us if you have any questions.
-";
+            Please follow the above instructions and contact us if you have any questions.
+            ";
                 }
 
                 emailBody += "\nThank you for choosing MediCare.";
@@ -651,23 +645,23 @@ Please follow the above instructions and contact us if you have any questions.
                 if (patientUser == null) return;
 
                 var emailBody = $@"
-Dear {patientUser.Username},
+                Dear {patientUser.Username},
 
-Your consultation details have been updated.
+                Your consultation details have been updated.
 
-Appointment with Dr. {consultation.Doctor.FullName} on {consultation.ScheduledAt:MMMM dd, yyyy}
+                Appointment with Dr. {consultation.Doctor.FullName} on {consultation.ScheduledAt:MMMM dd, yyyy}
 
-The following information was updated:
-- {string.Join("\n- ", updates)}
+                The following information was updated:
+                - {string.Join("\n- ", updates)}
 
-";
+                ";
 
                 if (!string.IsNullOrEmpty(consultation.TreatmentPlan))
                 {
                     emailBody += $@"
-Current Treatment Plan:
-{consultation.TreatmentPlan}
-";
+            Current Treatment Plan:
+            {consultation.TreatmentPlan}
+            ";
                 }
 
                 emailBody += "\nPlease review the updated information.";
@@ -696,42 +690,42 @@ Current Treatment Plan:
 
                 // Email to Patient
                 var patientEmailBody = $@"
-Dear {patientUser.Username},
+            Dear {patientUser.Username},
 
-Your appointment has been cancelled.
+            Your appointment has been cancelled.
 
-Appointment Details:
-- Doctor: Dr. {consultation.Doctor.FullName} ({consultation.Doctor.Specialization.Name})
-- Date: {consultation.ScheduledAt:MMMM dd, yyyy}
-- Time: {consultation.ScheduledAt:hh:mm tt}
+            Appointment Details:
+            - Doctor: Dr. {consultation.Doctor.FullName} ({consultation.Doctor.Specialization.Name})
+            - Date: {consultation.ScheduledAt:MMMM dd, yyyy}
+            - Time: {consultation.ScheduledAt:hh:mm tt}
 
-Cancelled by: {cancelledByName}
+            Cancelled by: {cancelledByName}
 
-If this was unexpected or you need to reschedule, please contact us.
+            If this was unexpected or you need to reschedule, please contact us.
 
-Thank you,
-MediCare Team
-";
+            Thank you,
+            MediCare Team
+            ";
 
                 await _emailService.SendAppointmentConfirmationAsync(patientUser.Email, patientEmailBody);
 
                 // Email to Doctor
                 var doctorEmailBody = $@"
-Dr. {consultation.Doctor.FullName},
+                Dr. {consultation.Doctor.FullName},
 
-Your appointment has been cancelled.
+                Your appointment has been cancelled.
 
-Appointment Details:
-- Patient: {patientUser.Username}
-- Date: {consultation.ScheduledAt:MMMM dd, yyyy}
-- Time: {consultation.ScheduledAt:hh:mm tt}
+                Appointment Details:
+                - Patient: {patientUser.Username}
+                - Date: {consultation.ScheduledAt:MMMM dd, yyyy}
+                - Time: {consultation.ScheduledAt:hh:mm tt}
 
-Cancelled by: {cancelledByName}
+                Cancelled by: {cancelledByName}
 
-This time slot is now available for other appointments.
+                This time slot is now available for other appointments.
 
-MediCare System
-";
+                MediCare System
+                ";
 
                 await _emailService.SendAppointmentConfirmationAsync(consultation.Doctor.User.Email, doctorEmailBody);
 
@@ -743,42 +737,112 @@ MediCare System
             }
         }
 
+
+
         private async Task<bool> IsTimeSlotAvailable(Guid doctorId, DateTime scheduledAt)
         {
-            var endTime = scheduledAt.AddMinutes(30); // Default consultation duration
+            // Ensure scheduledAt is UTC
+            var scheduledAtUtc = scheduledAt.Kind == DateTimeKind.Utc ? scheduledAt : scheduledAt.ToUniversalTime();
+
+            var consultationDuration = TimeSpan.FromMinutes(30);
+            var consultationEndTime = scheduledAtUtc.Add(consultationDuration);
 
             // Check against doctor's availability
-            var dayOfWeek = scheduledAt.DayOfWeek;
-            var timeOfDay = scheduledAt.TimeOfDay;
+            var dayOfWeek = scheduledAtUtc.DayOfWeek;
+            var timeOfDay = scheduledAtUtc.TimeOfDay;
 
             var isAvailable = await _db.DoctorAvailabilities
                 .AnyAsync(a => a.DoctorId == doctorId &&
                     ((a.IsRecurring && a.DayOfWeek == dayOfWeek) ||
-                     (!a.IsRecurring && a.SpecificDate == scheduledAt.Date)) &&
+                     (!a.IsRecurring && a.SpecificDate == scheduledAtUtc.Date)) &&
                     a.StartTime <= timeOfDay &&
-                    a.EndTime >= endTime.TimeOfDay);
+                    a.EndTime >= consultationEndTime.TimeOfDay);
 
             if (!isAvailable) return false;
 
             // Check for overlapping appointments
-            var overlappingAppointments = await _db.Consultations
-                .CountAsync(c => c.DoctorId == doctorId &&
-                    c.Status != AppointmentStatus.Cancelled &&
-                    c.ScheduledAt < endTime &&
-                    c.ScheduledAt.Add(c.Duration) > scheduledAt);
+            var existingAppointments = await _db.Consultations
+                .Where(c => c.DoctorId == doctorId &&
+                           c.Status != AppointmentStatus.Cancelled &&
+                           c.ScheduledAt.Date == scheduledAtUtc.Date)
+                .Select(c => new { c.ScheduledAt, c.Duration })
+                .ToListAsync();
+
+            // Calculate overlaps in memory
+            var overlappingCount = existingAppointments.Count(c =>
+            {
+                var existingEnd = c.ScheduledAt.Add(c.Duration);
+                return scheduledAtUtc < existingEnd && consultationEndTime > c.ScheduledAt;
+            });
 
             // Check against max appointments per slot
             var availability = await _db.DoctorAvailabilities
                 .FirstOrDefaultAsync(a => a.DoctorId == doctorId &&
                     ((a.IsRecurring && a.DayOfWeek == dayOfWeek) ||
-                     (!a.IsRecurring && a.SpecificDate == scheduledAt.Date)) &&
+                     (!a.IsRecurring && a.SpecificDate == scheduledAtUtc.Date)) &&
                     a.StartTime <= timeOfDay &&
-                    a.EndTime >= endTime.TimeOfDay);
+                    a.EndTime >= consultationEndTime.TimeOfDay);
 
-            return overlappingAppointments < (availability?.MaxAppointmentsPerSlot ?? 1);
+            return overlappingCount < (availability?.MaxAppointmentsPerSlot ?? 1);
         }
-    }
 
-    // Additional DTO for status-only updates
-    // public record UpdateConsultationStatusRequest(AppointmentStatus Status);
+
+
+        private async Task<List<AvailableSlotResponse>> CalculateAvailableSlots(Guid doctorId, DateTime startDate, DateTime endDate)
+        {
+            var slots = new List<AvailableSlotResponse>();
+            var currentTime = DateTime.Now;
+
+            var availabilities = await _db.DoctorAvailabilities
+                .Where(a => a.DoctorId == doctorId)
+                .ToListAsync();
+
+            var existingAppointments = await _db.Consultations
+                .Where(c => c.DoctorId == doctorId &&
+                           c.ScheduledAt >= startDate &&
+                           c.ScheduledAt <= endDate &&
+                           c.Status != AppointmentStatus.Cancelled)
+                .ToListAsync();
+
+            for (var date = startDate.Date; date <= endDate.Date; date = date.AddDays(1))
+            {
+                var dayAvailabilities = availabilities.Where(a =>
+                    (a.IsRecurring && a.DayOfWeek == date.DayOfWeek) ||
+                    (!a.IsRecurring && a.SpecificDate == date.Date));
+
+                foreach (var availability in dayAvailabilities)
+                {
+                    var slotStart = date.Add(availability.StartTime);
+                    var slotEnd = date.Add(availability.EndTime);
+
+                    // Generate 30-minute slots within availability window
+                    for (var slotTime = slotStart; slotTime < slotEnd; slotTime = slotTime.AddMinutes(30))
+                    {
+                        var slotEndTime = slotTime.AddMinutes(30);
+
+                        // Only show future slots
+                        if (slotTime < currentTime) continue;
+
+                        var bookedCount = existingAppointments
+                            .Count(a => a.ScheduledAt >= slotTime && a.ScheduledAt < slotEndTime);
+
+                        var isAvailable = bookedCount < availability.MaxAppointmentsPerSlot;
+
+                        slots.Add(new AvailableSlotResponse(
+                            slotTime,
+                            slotEndTime,
+                            isAvailable,
+                            bookedCount,
+                            availability.MaxAppointmentsPerSlot
+                        ));
+                    }
+                }
+            }
+
+            return slots.OrderBy(s => s.StartTime).ToList();
+        }
+
+    }
 }
+
+

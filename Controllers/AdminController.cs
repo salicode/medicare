@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
-
+using MediCare.Helpers;
 namespace MediCare.Models.Entities
 {
     [ApiController]
@@ -56,30 +56,47 @@ namespace MediCare.Models.Entities
         {
             try
             {
-                if (await _db.Users.AnyAsync(u => u.Username == req.Username))
-                    return BadRequest("Username exists");
 
-                if (await _db.Users.AnyAsync(u => u.Email == req.Email))
-                    return BadRequest("Email exists");
 
-                if (!IsPasswordStrong(req.Password))
+                // Enhanced validation
+                if (!ValidationHelpers.IsValidEmail(req.Email))
+                    return BadRequest("Invalid email format");
+
+                if (!ValidationHelpers.IsValidInput(req.Username, "_-"))
+                    return BadRequest("Username contains invalid characters");
+
+                if (!ValidationHelpers.IsPasswordStrong(req.Password))
                     return BadRequest("Password does not meet strength requirements");
 
-                // Validate role is a valid system role
-                if (!RoleConstants.AllRoles.Contains(req.Role))
+                // SQL injection prevention
+                if (ValidationHelpers.ContainsSqlInjectionPatterns(req.Username) ||
+                    ValidationHelpers.ContainsSqlInjectionPatterns(req.Email) ||
+                    ValidationHelpers.ContainsSqlInjectionPatterns(req.Role))
+                    return BadRequest("Input contains potentially dangerous patterns");
+
+                // XSS prevention
+                if (!ValidationHelpers.IsValidXSSInput(req.Username) ||
+                    !ValidationHelpers.IsValidXSSInput(req.Email))
+                    return BadRequest("Input contains potentially dangerous content");
+
+                // Sanitize inputs
+                var sanitizedUsername = ValidationHelpers.SanitizeInput(req.Username);
+                var sanitizedEmail = ValidationHelpers.SanitizeInput(req.Email);
+                var sanitizedRole = ValidationHelpers.SanitizeInput(req.Role);
+
+                // Check for existing user with sanitized data
+                if (await _db.Users.AnyAsync(u => u.Username == sanitizedUsername))
+                    return BadRequest("Username exists");
+
+                if (await _db.Users.AnyAsync(u => u.Email == sanitizedEmail))
+                    return BadRequest("Email exists");
+
+                // Use sanitized data
+                if (!RoleConstants.AllRoles.Contains(sanitizedRole))
                     return BadRequest($"Invalid role. Must be one of: {string.Join(", ", RoleConstants.AllRoles)}");
 
-                // Get role from name (not ID)
-                var role = await _db.Roles.FirstOrDefaultAsync(r => r.Name == req.Role && r.IsSystemRole);
-                if (role == null)
-                    return BadRequest("Invalid system role");
-
-                // Validate PatientProfileId for patient roles
-                if (req.Role == RoleConstants.Patient && !req.PatientProfileId.HasValue)
-                    return BadRequest("PatientProfileId is required for patient roles");
-
-                if (req.Role != RoleConstants.Patient && req.PatientProfileId.HasValue)
-                    return BadRequest("PatientProfileId should only be provided for patient roles");
+                // Continue with sanitized data...
+                var role = await _db.Roles.FirstOrDefaultAsync(r => r.Name == sanitizedRole && r.IsSystemRole);
 
                 // Create user
                 var user = new User
@@ -145,6 +162,46 @@ namespace MediCare.Models.Entities
         {
             try
             {
+                
+
+                if (!ValidationHelpers.IsValidInput(req.FullName, " .'-"))
+                    return BadRequest("Full name contains invalid characters. Only letters, spaces, periods, apostrophes, and hyphens are allowed.");
+
+                if (!string.IsNullOrEmpty(req.PhoneNumber) && !ValidationHelpers.IsValidPhoneNumber(req.PhoneNumber))
+                    return BadRequest("Invalid phone number format");
+
+                if (!string.IsNullOrEmpty(req.Bio) && !ValidationHelpers.IsValidMedicalText(req.Bio))
+                    return BadRequest("Bio contains invalid characters or potentially dangerous content");
+
+                // XSS prevention
+                if (!ValidationHelpers.IsValidXSSInput(req.FullName) ||
+                    (!string.IsNullOrEmpty(req.PhoneNumber) && !ValidationHelpers.IsValidXSSInput(req.PhoneNumber)) ||
+                    (!string.IsNullOrEmpty(req.Bio) && !ValidationHelpers.IsValidXSSInput(req.Bio)))
+                    return BadRequest("Input contains potentially dangerous content");
+
+                // SQL injection prevention
+                if (ValidationHelpers.ContainsSqlInjectionPatterns(req.FullName) ||
+                    (!string.IsNullOrEmpty(req.PhoneNumber) && ValidationHelpers.ContainsSqlInjectionPatterns(req.PhoneNumber)) ||
+                    (!string.IsNullOrEmpty(req.Bio) && ValidationHelpers.ContainsSqlInjectionPatterns(req.Bio)))
+                    return BadRequest("Input contains potentially dangerous patterns");
+
+                if (req.YearsOfExperience < 0)
+                    return BadRequest("Years of experience cannot be negative");
+
+                if (req.ConsultationFee < 0)
+                    return BadRequest("Consultation fee cannot be negative");
+
+                if (req.YearsOfExperience > 60)
+                    return BadRequest("Years of experience seems unrealistic");
+
+                if (req.ConsultationFee > 10000) // $10,000 maximum fee
+                    return BadRequest("Consultation fee is too high");
+
+                // Sanitize inputs
+                var sanitizedFullName = ValidationHelpers.SanitizeInput(req.FullName);
+                var sanitizedPhoneNumber = !string.IsNullOrEmpty(req.PhoneNumber) ? ValidationHelpers.SanitizeInput(req.PhoneNumber) : null;
+                var sanitizedBio = !string.IsNullOrEmpty(req.Bio) ? ValidationHelpers.SanitizeInput(req.Bio) : null;
+
                 // Verify user exists and has Doctor role
                 var user = await _db.Users
                     .Include(u => u.UserRoles)
@@ -152,19 +209,38 @@ namespace MediCare.Models.Entities
                     .FirstOrDefaultAsync(u => u.Id == req.UserId);
 
                 if (user == null)
+                {
+                    _logger.LogWarning("Attempt to create doctor profile for non-existent user: {UserId}", req.UserId);
                     return NotFound("User not found");
+                }
 
                 if (!user.UserRoles.Any(ur => ur.Role.Name == RoleConstants.Doctor))
+                {
+                    _logger.LogWarning("Attempt to create doctor profile for user without Doctor role: {UserId}", req.UserId);
                     return BadRequest("User does not have Doctor role");
+                }
 
                 // Check if doctor profile already exists
                 if (await _db.Doctors.AnyAsync(d => d.UserId == req.UserId))
+                {
+                    _logger.LogWarning("Attempt to create duplicate doctor profile for user: {UserId}", req.UserId);
                     return BadRequest("Doctor profile already exists for this user");
+                }
 
-                // Verify specialization exists
+                // Verify specialization exists and is valid
                 var specialization = await _db.Specializations.FindAsync(req.SpecializationId);
                 if (specialization == null)
+                {
+                    _logger.LogWarning("Attempt to create doctor with invalid specialization: {SpecializationId}", req.SpecializationId);
                     return BadRequest("Invalid specialization");
+                }
+
+                // Check if full name is already in use by another doctor
+                if (await _db.Doctors.AnyAsync(d => d.FullName == sanitizedFullName && d.UserId != req.UserId))
+                {
+                    _logger.LogWarning("Attempt to create doctor with duplicate full name: {FullName}", sanitizedFullName);
+                    return BadRequest("A doctor with this full name already exists");
+                }
 
                 var doctor = new Doctor
                 {

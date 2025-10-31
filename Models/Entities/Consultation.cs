@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-
+using MediCare.Helpers;
+using MediCare.Attributes;
 namespace MediCare.Models.Entities;
 
 public class Consultation
@@ -29,15 +30,19 @@ public class Consultation
     public AppointmentStatus Status { get; set; } = AppointmentStatus.Pending;
 
     [MaxLength(1000)]
+    [ValidInput(AllowedSpecialCharacters = " .,!?@#$%&*+-/():;'", AllowNull = true)]
     public string? Symptoms { get; set; }
 
     [MaxLength(1000)]
+    [ValidInput(AllowedSpecialCharacters = " .,!?@#$%&*+-/():;'", AllowNull = true)]
     public string? Diagnosis { get; set; }
 
     [MaxLength(1000)]
+    [ValidInput(AllowedSpecialCharacters = " .,!?@#$%&*+-/():;'", AllowNull = true)]
     public string? TreatmentPlan { get; set; }
 
     [MaxLength(1000)]
+    [ValidInput(AllowedSpecialCharacters = " .,!?@#$%&*+-/():;'", AllowNull = true)]
     public string? Notes { get; set; }
 
     public decimal Fee { get; set; }

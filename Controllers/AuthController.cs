@@ -4,6 +4,8 @@ using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using MediCare.Helpers;
+using Microsoft.AspNetCore.Authorization;
 
 namespace MediCare.Models.Entities
 {
@@ -37,19 +39,31 @@ namespace MediCare.Models.Entities
         {
             try
             {
-                // Input validation
-                if (string.IsNullOrWhiteSpace(req.Password) || req.Password.Length < 8)
-                    return BadRequest("Password must be at least 8 characters long");
 
-                if (!IsPasswordStrong(req.Password))
-                    return BadRequest("Password must contain at least one uppercase letter and one number");
+                if (!ValidationHelpers.IsValidEmail(req.Email))
+                    return BadRequest("Invalid email format");
 
-                // Check for existing user
-                if (await _db.Users.AnyAsync(u => u.Username == req.Username))
-                    return BadRequest("Username already exists");
+                if (!ValidationHelpers.IsValidInput(req.Username, "_-"))
+                    return BadRequest("Username contains invalid characters");
 
-                if (await _db.Users.AnyAsync(u => u.Email == req.Email))
-                    return BadRequest("Email already exists");
+                if (!ValidationHelpers.IsPasswordStrong(req.Password))
+                    return BadRequest("Password must be at least 8 characters with uppercase, lowercase, number, and special character");
+
+                if (ValidationHelpers.ContainsSqlInjectionPatterns(req.Username) ||
+                    ValidationHelpers.ContainsSqlInjectionPatterns(req.Email))
+                    return BadRequest("Input contains invalid patterns");
+
+                // Sanitize inputs
+                var sanitizedUsername = ValidationHelpers.SanitizeInput(req.Username);
+                var sanitizedEmail = ValidationHelpers.SanitizeInput(req.Email);
+
+
+                if (await _db.Users.AnyAsync(u => u.Username == sanitizedUsername))
+                    return BadRequest("Username exists");
+
+                if (await _db.Users.AnyAsync(u => u.Email == sanitizedEmail))
+                    return BadRequest("Email exists");
+
 
                 // Use constant for default role
                 var defaultRole = await _db.Roles.FirstOrDefaultAsync(r => r.Name == RoleConstants.Patient);
@@ -61,8 +75,10 @@ namespace MediCare.Models.Entities
                 // Create user
                 var user = new User
                 {
-                    Username = req.Username,
-                    Email = req.Email,
+                    // Username = req.Username,
+                    // Email = req.Email,
+                    Username = sanitizedUsername,
+                    Email = sanitizedEmail,
                     PatientProfileId = req.PatientProfileId,
                     IsEmailConfirmed = false,
                     CreatedAt = DateTime.UtcNow
@@ -101,6 +117,7 @@ namespace MediCare.Models.Entities
                     user.Username,
                     user.Email,
                     Role = defaultRole.Name,
+                    PatientRecordId = user.PatientProfileId, 
                     RequiresConfirmation = true,
                     Message = "Registration successful. Please check your email for confirmation instructions."
                 });
@@ -121,11 +138,53 @@ namespace MediCare.Models.Entities
         public async Task<IActionResult> Login([FromBody] LoginRequest req)
         {
             try
+
+
             {
+                if (string.IsNullOrWhiteSpace(req.Username) || string.IsNullOrWhiteSpace(req.Password))
+                {
+                    _logger.LogWarning("Login attempt with empty username or password");
+                    return Unauthorized("Invalid credentials");
+                }
+
+                // Validate username format
+                if (!ValidationHelpers.IsValidInput(req.Username, "_-"))
+                {
+                    _logger.LogWarning("Login attempt with invalid username format: {Username}", req.Username);
+                    return Unauthorized("Invalid credentials");
+                }
+
+                // Validate password contains only allowed characters
+                if (!ValidationHelpers.IsValidInput(req.Password, "!@#$%^&*()_+-=[]{}|;:,.<>?"))
+                {
+                    _logger.LogWarning("Login attempt with invalid password characters for user: {Username}", req.Username);
+                    return Unauthorized("Invalid credentials");
+                }
+
+                // SQL injection prevention
+                if (ValidationHelpers.ContainsSqlInjectionPatterns(req.Username))
+                {
+                    _logger.LogWarning("Potential SQL injection attempt in login username: {Username}", req.Username);
+                    return Unauthorized("Invalid credentials");
+                }
+
+                // XSS prevention
+                if (!ValidationHelpers.IsValidXSSInput(req.Username))
+                {
+                    _logger.LogWarning("Potential XSS attempt in login username: {Username}", req.Username);
+                    return Unauthorized("Invalid credentials");
+                }
+
+
+
+
+
+                var sanitizedUsername = ValidationHelpers.SanitizeInput(req.Username);
+
                 var user = await _db.Users
                     .Include(u => u.UserRoles)
                     .ThenInclude(ur => ur.Role)
-                    .FirstOrDefaultAsync(u => u.Username == req.Username);
+                    .FirstOrDefaultAsync(u => u.Username == sanitizedUsername);
 
                 if (user == null)
                 {
@@ -175,6 +234,43 @@ namespace MediCare.Models.Entities
             {
                 _logger.LogError(ex, "Error during login for {Username}", req.Username);
                 return StatusCode(500, "An error occurred during login");
+            }
+        }
+
+
+        [HttpGet("me")]
+        [Authorize]
+        public async Task<IActionResult> GetCurrentUser()
+        {
+            try
+            {
+                var currentUserId = Guid.Parse(User.FindFirst("id")!.Value);
+
+                var user = await _db.Users
+                    .Include(u => u.UserRoles)
+                    .ThenInclude(ur => ur.Role)
+                    .Select(u => new
+                    {
+                        u.Id,
+                        u.Username,
+                        u.Email,
+                        u.PatientProfileId,
+                        u.IsEmailConfirmed,
+                        u.CreatedAt,
+                        Roles = u.UserRoles.Select(ur => ur.Role.Name).ToList(),
+                        
+                    })
+                    .FirstOrDefaultAsync(u => u.Id == currentUserId);
+
+                if (user == null)
+                    return NotFound("User not found");
+
+                return Ok(user);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving current user info");
+                return StatusCode(500, "An error occurred while retrieving user information");
             }
         }
 
@@ -343,7 +439,7 @@ namespace MediCare.Models.Entities
         new Claim("id", user.Id.ToString()),
         new Claim("username", user.Username),
         new Claim("email", user.Email),
-        new Claim("primary_role", primaryRole), // ✅ Now shows correct role
+        new Claim("primary_role", primaryRole),
         new Claim("email_confirmed", user.IsEmailConfirmed.ToString())
     };
 

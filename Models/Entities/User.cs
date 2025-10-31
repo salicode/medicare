@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using MediCare.Attributes;
 
 namespace MediCare.Models.Entities
 {
@@ -9,6 +10,7 @@ namespace MediCare.Models.Entities
         public Guid Id { get; set; } = Guid.NewGuid();
 
         [Required]
+        [ValidInput(AllowedSpecialCharacters = "_-", ErrorMessage = "Username can only contain letters, digits, underscores, and hyphens")]
         public string Username { get; set; } = null!;
 
         [Required]
@@ -22,6 +24,7 @@ namespace MediCare.Models.Entities
                 ur.Role.Permissions.Any(rp =>
                     rp.Permission.Name == permissionName));
         }
+
 
         public bool HasRole(string roleName)
         {

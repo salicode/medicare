@@ -10,8 +10,10 @@ public class PatientRecord
 
     public string FullName { get; set; } = string.Empty;
 
-    // Sensitive fields like test results, prescriptions, etc.
+    
     public List<TestResult> TestResults { get; set; } = new();
     public List<Prescription> Prescriptions { get; set; } = new();
     public List<Vital> Vitals { get; set; } = new();
+    // public DateTime CreatedAt { get; internal set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

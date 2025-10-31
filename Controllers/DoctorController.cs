@@ -19,12 +19,16 @@ namespace MediCare.Models.Entities
             _logger = logger;
         }
 
+
+
         [HttpGet]
         [AllowAnonymous]
         public async Task<IActionResult> GetDoctors([FromQuery] Guid? specializationId = null)
         {
             try
             {
+                var today = DateTime.Today;
+
                 var query = _db.Doctors
                     .Include(d => d.Specialization)
                     .Include(d => d.User)
@@ -45,7 +49,9 @@ namespace MediCare.Models.Entities
                         d.Bio,
                         d.PhoneNumber,
                         Specialization = d.Specialization.Name,
-                        IsAvailable = d.Availabilities.Any(a => a.IsRecurring || a.SpecificDate >= DateTime.Today)
+                        IsAvailable = d.Availabilities.Any(a =>
+                            a.IsRecurring ||
+                            (a.SpecificDate.HasValue && a.SpecificDate.Value.Date >= today))
                     })
                     .ToListAsync();
 

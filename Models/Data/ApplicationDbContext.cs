@@ -95,15 +95,19 @@ namespace MediCare.Models.Entities
             .HasIndex(d => d.UserId)
             .IsUnique();
 
-        modelBuilder.Entity<Doctor>()
-            .HasOne(d => d.User)
-            .WithOne()
-            .HasForeignKey<Doctor>(d => d.UserId)
-            .OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<Doctor>()
+                .HasOne(d => d.User)
+                .WithOne()
+                .HasForeignKey<Doctor>(d => d.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+        // modelBuilder.Entity<DoctorAvailability>()
+        //     .HasIndex(da => new { da.DoctorId, da.DayOfWeek, da.StartTime })
+        //     .IsUnique();
 
         modelBuilder.Entity<DoctorAvailability>()
-            .HasIndex(da => new { da.DoctorId, da.DayOfWeek, da.StartTime })
-            .IsUnique();
+        .Property(a => a.SpecificDate)
+        .HasColumnType("date"); // Store as date only, no time component
 
         modelBuilder.Entity<Consultation>()
             .HasIndex(c => new { c.DoctorId, c.ScheduledAt })

@@ -4,7 +4,7 @@
 
 GET {{medicare_HostAddress}}/api/Admin/users
 Content-Type: application/json
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjlhYzY1NDJkLThlYzMtNGYwNy1iNjgzLTdhMWI1NjA4ZGE0OCIsInVzZXJuYW1lIjoiYWRtaW4iLCJlbWFpbCI6ImFkbWluQG1lZGljYXJlLmNvbSIsInByaW1hcnlfcm9sZSI6IlN1cGVyQWRtaW4iLCJlbWFpbF9jb25maXJtZWQiOiJUcnVlIiwiaHR0cDovL3NjaGVtYXMubWljcm9zb2Z0LmNvbS93cy8yMDA4LzA2L2lkZW50aXR5L2NsYWltcy9yb2xlIjoiU3VwZXJBZG1pbiIsImV4cCI6MTc2MTA4MjYyNCwiaXNzIjoiTWVkaUNhcmVBcGkiLCJhdWQiOiJNZWRpQ2FyZUFwaUNsaWVudHMifQ.eXA_XPJDFSerz7Rbyaq895PFuj9oycMhjMb0RydCjGo
+Authorization: Bearer 
 
 ### Test 3: 
 POST {{medicare_HostAddress}}/api/Auth/login
@@ -21,9 +21,9 @@ POST {{medicare_HostAddress}}/api/Auth/register
 Content-Type: application/json
 
 {
-  "email": "quizijaukafi-7605@yopmail.com",
-  "username": "johnpatient",
-  "password": "Patient123"
+  "email": "suseffopowe-2642@yopmail.com",
+  "username": "Saka",
+  "password": "Patient123!"
   
 }
 
@@ -36,9 +36,18 @@ Content-Type: application/json
    "username": "admin",
    "password": "Admin@123"
 }
+###
+POST {{medicare_HostAddress}}/api/Auth/login
+Content-Type: application/json
 
+{
+  
+   "username": "Aliyu",
+   "password": "Doctor123!"
+}
 ### Test 6: Test email confirmation (replace with actual values)
-GET {{medicare_HostAddress}}/api/Auth/confirm-email?userId=REPLACE_WITH_ACTUAL_USER_ID&token=REPLACE_WITH_ACTUAL_TOKEN
+GET {{medicare_HostAddress}}/api/consultations/available-doctors
+Authorization: Bearer 
 
 
 ###
@@ -49,16 +58,25 @@ GET {{medicare_HostAddress}}/api/Auth/confirm-email?userId=REPLACE_WITH_ACTUAL_U
 
 ###
 ### Get all available permissions
-GET {{medicare_HostAddress}}/api/Roles/permissions
+PUT {{medicare_HostAddress}}/api/doctors/my-profile
 Content-Type: application/json
 Authorization: Bearer 
+
+{
+  "fullName": "Dr. Aliyu Abubakar Hamza",
+  "specializationId": "c90cb0ab-1c69-4585-b3f1-b4b0332a734e",
+  "phoneNumber": "+1234567890",
+  "bio": "Experienced cardiologist with 12 years in the field. Specializing in heart diseases and preventive care. Board certified and accepting new patients.",
+  "yearsOfExperience": 12,
+  "consultationFee": 175.00
+}
 
 
 
 ### Get all permissions
-GET {{medicare_HostAddress}}/api/Roles/permissions
-Content-Type: application/json
-Authorization: Bearer 
+GET {{medicare_HostAddress}}/api/doctors
+
+
 
 
 
@@ -78,8 +96,8 @@ Content-Type: application/json
 Authorization: Bearer 
 
 {
-  "email": "freuzasossama-7061@yopmail.com",
-  "username": "Shehu",
+  "email": "voutruprefrato-2109@yopmail.com",
+  "username": "Aliyu",
   "password": "Doctor123!",
   "role": "Doctor"
 }
@@ -147,7 +165,7 @@ Authorization: Bearer {{nurse_token}}
 }
 
 ### Prescribe medication to patient (requires CanPrescribe policy)
-POST {{medicare_HostAddress}}/api/Patients/REPLACE_WITH_PATIENT_ID/prescriptions
+POST {{medicare_HostAddress}}/api/book
 Content-Type: application/json
 Authorization: Bearer {{doctor_token}}
 
@@ -185,8 +203,8 @@ POST {{medicare_HostAddress}}/api/Auth/login
 Content-Type: application/json
 
 {
-  "username": "drjohn",
-  "password": "Doctor@123"
+  "username": "johndoe",
+  "password": "Doctor@123!"
 }
 
 ###
@@ -216,7 +234,21 @@ Content-Type: application/json
 }
 
 ###
-@patient_token = {{patient_login.response.body.$.token}}
+GET {{medicare_HostAddress}}/api/auth/me
+Content-Type: application/json
+Authorization: Bearer 
 
 
 
+### Book a consultation (Patient only)
+POST {{medicare_HostAddress}}/api/consultations/book
+Content-Type: application/json
+Authorization: Bearer 
+
+{
+  "doctorId": "312733e4-1e67-43fb-ae91-cd1c8a4d026d",
+  "patientRecordId": "589097c6-18c4-499d-8430-f6d923954620", 
+  "scheduledAt": "2024-12-20T10:00:00",
+  "consultationType": 1,
+  "symptoms": "Headache and fever"
+}
