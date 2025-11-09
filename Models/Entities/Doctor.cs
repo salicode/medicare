@@ -19,11 +19,11 @@ public class Doctor
 
     [Required]
     public Guid SpecializationId { get; set; }
-     
+
     [ValidInput(AllowedSpecialCharacters = " +-().", AllowNull = true)]
     [MaxLength(20)]
     public string? PhoneNumber { get; set; }
-    
+
     [ValidInput(AllowedSpecialCharacters = " .,!?@#$%&*+-/():;'", AllowNull = true)]
     [MaxLength(500)]
     public string? Bio { get; set; }

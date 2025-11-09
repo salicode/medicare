@@ -8,6 +8,8 @@ using MediCare;
 using System.Security.Claims;
 using MediCare.Models.Entities;
 using User = MediCare.Models.Entities.User;
+using MediCare.Services;
+using QuestPDF.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -49,6 +51,11 @@ builder.Services.AddScoped<Microsoft.AspNetCore.Identity.IPasswordHasher<User>, 
 // Email service
 
 builder.Services.AddScoped<IEmailService, SmtpEmailService>();
+// Add to your service registration
+// builder.Services.AddScoped<IPdfService, PdfService>();
+
+// // Set QuestPDF license (free for non-commercial use)
+// QuestPDF.Settings.License = LicenseType.Community;
 builder.Services.AddScoped<IAuthorizationHandler, PatientAuthorizationHandler>(); 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>

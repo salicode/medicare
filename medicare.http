@@ -11,8 +11,8 @@ POST {{medicare_HostAddress}}/api/Auth/login
 Content-Type: application/json
 
 {
-  "username": "nagari",
-  "password": "nagari615"
+  "username": "kerery",
+  "password": "Patient123!"
 }
 
 
@@ -21,9 +21,10 @@ POST {{medicare_HostAddress}}/api/Auth/register
 Content-Type: application/json
 
 {
-  "email": "suseffopowe-2642@yopmail.com",
-  "username": "Saka",
-  "password": "Patient123!"
+  "email": "pumawetazu-9562@yopmail.com",
+  "username": "pumawetazu",
+  "password": "Patient123!",
+  "patientRecordId": null
   
 }
 
@@ -42,7 +43,7 @@ Content-Type: application/json
 
 {
   
-   "username": "Aliyu",
+   "username": "johndoe",
    "password": "Doctor123!"
 }
 ### Test 6: Test email confirmation (replace with actual values)
@@ -63,18 +64,19 @@ Content-Type: application/json
 Authorization: Bearer 
 
 {
-  "fullName": "Dr. Aliyu Abubakar Hamza",
-  "specializationId": "c90cb0ab-1c69-4585-b3f1-b4b0332a734e",
+  "fullName": "Dr. John Doe",
+  "specializationId": "ad44816e-48bf-487b-b09b-4a1080db123b",
   "phoneNumber": "+1234567890",
-  "bio": "Experienced cardiologist with 12 years in the field. Specializing in heart diseases and preventive care. Board certified and accepting new patients.",
-  "yearsOfExperience": 12,
-  "consultationFee": 175.00
+  "bio": "xperienced doctor with 12 years in the field. Specializing in heart diseases and preventive care. Board certified and accepting new patients.",
+  "yearsOfExperience": 5,
+  "consultationFee": 5000.00
 }
 
 
 
 ### Get all permissions
 GET {{medicare_HostAddress}}/api/doctors
+Authorization: Bearer 
 
 
 
@@ -96,24 +98,18 @@ Content-Type: application/json
 Authorization: Bearer 
 
 {
-  "email": "voutruprefrato-2109@yopmail.com",
-  "username": "Aliyu",
+  "email": "jazeqot@mailinator.com",
+  "username": "jazeqot",
   "password": "Doctor123!",
   "role": "Doctor"
 }
 ###
 POST {{medicare_HostAddress}}/api/Admin/doctors
 Content-Type: application/json
-Authorization: Bearer 
+Authorization: Bearer e
 
 {
-  "userId": "29979c1a-d5e6-4d65-b8c4-c7d2817967db",
-  "fullName": "Dr. Shehu Garba Ali",
-  "specializationId": "51fbd176-74f8-4c4d-926c-c4a01d30e40a",
-  "phoneNumber": "+234997890",
-  "bio": "Cardiologist with 10 years of experience specializing in heart diseases and preventive care.",
-  "yearsOfExperience": 10,
-  "consultationFee": 150.00
+ 
 }
 
 ### create specialization
@@ -203,7 +199,7 @@ POST {{medicare_HostAddress}}/api/Auth/login
 Content-Type: application/json
 
 {
-  "username": "johndoe",
+  "username": "jazeqot",
   "password": "Doctor@123!"
 }
 
@@ -228,15 +224,17 @@ Content-Type: application/json
 POST {{medicare_HostAddress}}/api/Auth/login
 Content-Type: application/json
 
+
 {
-  "username": "patient1",
-  "password": "Patient@123"
+  "username": "kiqodoju",
+  "password": "Patient@123!"
 }
+
 
 ###
 GET {{medicare_HostAddress}}/api/auth/me
 Content-Type: application/json
-Authorization: Bearer 
+Authorization: Bearer  
 
 
 
@@ -246,9 +244,47 @@ Content-Type: application/json
 Authorization: Bearer 
 
 {
-  "doctorId": "312733e4-1e67-43fb-ae91-cd1c8a4d026d",
-  "patientRecordId": "589097c6-18c4-499d-8430-f6d923954620", 
+  "doctorId": "ab7f1421-7a90-4b2a-b3a6-06c850a00c86",
+  "patientRecordId": "5e0ec61d-72c4-483e-95f4-47094831bb9b", 
   "scheduledAt": "2024-12-20T10:00:00",
   "consultationType": 1,
   "symptoms": "Headache and fever"
 }
+
+### Login as jazeqot (the doctor with isAvailable: false)
+# @name jazeqot_login
+POST {{medicare_HostAddress}}/api/Auth/login
+Content-Type: application/json
+
+{
+  "username": "jazeqot",
+  "password": "Doctor123!"
+}
+
+### Add availability for jazeqot (Monday-Friday, 9AM-5PM)
+POST {{medicare_HostAddress}}/api/doctors/my-availability
+Content-Type: application/json
+Authorization: Bearer 
+
+{
+  "dayOfWeek": 5,
+  "startTime": "09:00:00",
+  "endTime": "17:00:00",
+  "isRecurring": true,
+  "maxAppointmentsPerSlot": 5
+}
+
+
+
+
+# This creates availability for a specific date only.
+
+# json
+# {
+#   "dayOfWeek": 5,
+#   "startTime": "09:00:00",
+#   "endTime": "17:00:00",
+#   "isRecurring": false,
+#   "specificDate": "2025-11-07T00:00:00Z",
+#   "maxAppointmentsPerSlot": 5
+# }

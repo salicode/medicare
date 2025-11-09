@@ -72,14 +72,23 @@ namespace MediCare.Models.Entities
                 if (defaultRole == null)
                     return BadRequest("Default role not found");
 
+                var patientRecord = new PatientRecord
+                {
+                    Id = Guid.NewGuid(),
+                    FullName = sanitizedUsername,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _db.PatientRecords.Add(patientRecord);
+                await _db.SaveChangesAsync(); // Save to get ID
+
+
                 // Create user
                 var user = new User
                 {
-                    // Username = req.Username,
-                    // Email = req.Email,
+
                     Username = sanitizedUsername,
                     Email = sanitizedEmail,
-                    PatientProfileId = req.PatientProfileId,
+                    PatientProfileId = patientRecord.Id,
                     IsEmailConfirmed = false,
                     CreatedAt = DateTime.UtcNow
                 };
@@ -117,7 +126,7 @@ namespace MediCare.Models.Entities
                     user.Username,
                     user.Email,
                     Role = defaultRole.Name,
-                    PatientRecordId = user.PatientProfileId, 
+                    PatientRecordId = patientRecord.Id,
                     RequiresConfirmation = true,
                     Message = "Registration successful. Please check your email for confirmation instructions."
                 });
@@ -128,10 +137,6 @@ namespace MediCare.Models.Entities
                 return StatusCode(500, "An error occurred during registration");
             }
         }
-
-
-
-
 
 
         [HttpPost("login")]
@@ -258,7 +263,7 @@ namespace MediCare.Models.Entities
                         u.IsEmailConfirmed,
                         u.CreatedAt,
                         Roles = u.UserRoles.Select(ur => ur.Role.Name).ToList(),
-                        
+
                     })
                     .FirstOrDefaultAsync(u => u.Id == currentUserId);
 

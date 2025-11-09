@@ -8,5 +8,12 @@ namespace MediCare
         Task SendPasswordResetEmailAsync(string email, string resetLink);
 
         Task SendAppointmentConfirmationAsync(string email, string appointmentDetails);
+
+        // Task SendAppointmentConfirmationAsync(
+        //     string email, 
+        //     string appointmentDetails, 
+        //     byte[]? pdfAttachment = null, 
+        //     string? attachmentName = null);
     }
-}
+    }
+

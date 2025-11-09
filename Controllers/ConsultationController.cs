@@ -10,6 +10,7 @@ using MediCare.Models.DTOs.Consultations;
 using MediCare.Models.DTOs.Auth;
 using MediCare.Helpers;
 using System.Linq;
+// using MediCare.Services;
 
 namespace MediCare.Models.Entities
 {
@@ -23,6 +24,8 @@ namespace MediCare.Models.Entities
         private readonly IAuthorizationService _auth;
         private readonly ILogger<ConsultationsController> _logger;
 
+        // private readonly IPdfService _pdfService;
+
         public ConsultationsController(
             ApplicationDbContext db,
             IEmailService emailService,
@@ -33,6 +36,7 @@ namespace MediCare.Models.Entities
             _emailService = emailService;
             _auth = auth;
             _logger = logger;
+            // _pdfService = pdfService; 
         }
 
         // [HttpPost("book")]
@@ -111,15 +115,23 @@ namespace MediCare.Models.Entities
                 var currentUserId = Guid.Parse(User.FindFirst("id")!.Value);
 
                 // FIX: Convert scheduledAt to UTC
+                // var scheduledAtUtc = request.ScheduledAt;
+                // if (scheduledAtUtc.Kind == DateTimeKind.Unspecified)
+                // {
+                //     scheduledAtUtc = DateTime.SpecifyKind(scheduledAtUtc, DateTimeKind.Utc);
+                // }
+                // else if (scheduledAtUtc.Kind == DateTimeKind.Local)
+                // {
+                //     scheduledAtUtc = scheduledAtUtc.ToUniversalTime();
+                // }
+
+                //Convert to UTC with proper handling
                 var scheduledAtUtc = request.ScheduledAt;
-                if (scheduledAtUtc.Kind == DateTimeKind.Unspecified)
-                {
-                    scheduledAtUtc = DateTime.SpecifyKind(scheduledAtUtc, DateTimeKind.Utc);
-                }
-                else if (scheduledAtUtc.Kind == DateTimeKind.Local)
+                if (scheduledAtUtc.Kind != DateTimeKind.Utc)
                 {
                     scheduledAtUtc = scheduledAtUtc.ToUniversalTime();
                 }
+
 
                 // Verify patient record exists and belongs to current user
                 var patientRecordExists = await _db.PatientRecords
@@ -137,12 +149,25 @@ namespace MediCare.Models.Entities
                 var doctor = await _db.Doctors
                     .Include(d => d.User)
                     .Include(d => d.Specialization)
+                    .Include(d => d.Availabilities)
                     .FirstOrDefaultAsync(d => d.Id == request.DoctorId && d.IsActive);
 
                 if (doctor == null)
                     return NotFound("Doctor not found");
 
                 // Check if slot is available - pass the UTC time
+                // var isSlotAvailable = await IsTimeSlotAvailable(request.DoctorId, scheduledAtUtc);
+                // if (!isSlotAvailable)
+                //     return BadRequest("Selected time slot is not available");
+
+                var hasValidAvailability = doctor.Availabilities.Any(a =>
+                    a.IsRecurring ||
+                    (a.SpecificDate.HasValue && a.SpecificDate.Value.Date >= DateTime.UtcNow.Date));
+
+                if (!hasValidAvailability)
+                    return BadRequest("Doctor is not currently accepting appointments");
+
+                // Enhanced slot availability check
                 var isSlotAvailable = await IsTimeSlotAvailable(request.DoctorId, scheduledAtUtc);
                 if (!isSlotAvailable)
                     return BadRequest("Selected time slot is not available");
@@ -739,51 +764,46 @@ namespace MediCare.Models.Entities
 
 
 
+
         private async Task<bool> IsTimeSlotAvailable(Guid doctorId, DateTime scheduledAt)
         {
-            // Ensure scheduledAt is UTC
-            var scheduledAtUtc = scheduledAt.Kind == DateTimeKind.Utc ? scheduledAt : scheduledAt.ToUniversalTime();
-
-            var consultationDuration = TimeSpan.FromMinutes(30);
-            var consultationEndTime = scheduledAtUtc.Add(consultationDuration);
-
-            // Check against doctor's availability
-            var dayOfWeek = scheduledAtUtc.DayOfWeek;
-            var timeOfDay = scheduledAtUtc.TimeOfDay;
-
-            var isAvailable = await _db.DoctorAvailabilities
-                .AnyAsync(a => a.DoctorId == doctorId &&
-                    ((a.IsRecurring && a.DayOfWeek == dayOfWeek) ||
-                     (!a.IsRecurring && a.SpecificDate == scheduledAtUtc.Date)) &&
-                    a.StartTime <= timeOfDay &&
-                    a.EndTime >= consultationEndTime.TimeOfDay);
-
-            if (!isAvailable) return false;
-
-            // Check for overlapping appointments
-            var existingAppointments = await _db.Consultations
-                .Where(c => c.DoctorId == doctorId &&
-                           c.Status != AppointmentStatus.Cancelled &&
-                           c.ScheduledAt.Date == scheduledAtUtc.Date)
-                .Select(c => new { c.ScheduledAt, c.Duration })
-                .ToListAsync();
-
-            // Calculate overlaps in memory
-            var overlappingCount = existingAppointments.Count(c =>
+            try
             {
-                var existingEnd = c.ScheduledAt.Add(c.Duration);
-                return scheduledAtUtc < existingEnd && consultationEndTime > c.ScheduledAt;
-            });
+                var scheduledAtUtc = scheduledAt.Kind == DateTimeKind.Utc
+                    ? scheduledAt
+                    : scheduledAt.ToUniversalTime();
 
-            // Check against max appointments per slot
-            var availability = await _db.DoctorAvailabilities
-                .FirstOrDefaultAsync(a => a.DoctorId == doctorId &&
-                    ((a.IsRecurring && a.DayOfWeek == dayOfWeek) ||
-                     (!a.IsRecurring && a.SpecificDate == scheduledAtUtc.Date)) &&
-                    a.StartTime <= timeOfDay &&
-                    a.EndTime >= consultationEndTime.TimeOfDay);
+                var dayOfWeek = scheduledAtUtc.DayOfWeek;
+                var timeOfDay = scheduledAtUtc.TimeOfDay;
 
-            return overlappingCount < (availability?.MaxAppointmentsPerSlot ?? 1);
+                // Check doctor availability
+                var availability = await _db.DoctorAvailabilities
+                    .Where(a => a.DoctorId == doctorId &&
+                               ((a.IsRecurring && a.DayOfWeek == dayOfWeek) ||
+                                (!a.IsRecurring && a.SpecificDate.HasValue &&
+                                 a.SpecificDate.Value.Date == scheduledAtUtc.Date)) &&
+                               a.StartTime <= timeOfDay &&
+                               a.EndTime >= timeOfDay.Add(TimeSpan.FromMinutes(30))) // 30 min consultation
+                    .FirstOrDefaultAsync();
+
+                if (availability == null) return false;
+
+                // Simple check - just count appointments at the same time
+                var appointmentsAtSameTime = await _db.Consultations
+                    .Where(c => c.DoctorId == doctorId &&
+                               c.Status != AppointmentStatus.Cancelled &&
+                               c.ScheduledAt.Date == scheduledAtUtc.Date &&
+                               c.ScheduledAt.Hour == scheduledAtUtc.Hour &&
+                               c.ScheduledAt.Minute == scheduledAtUtc.Minute)
+                    .CountAsync();
+
+                return appointmentsAtSameTime < availability.MaxAppointmentsPerSlot;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error checking time slot availability for doctor {DoctorId}", doctorId);
+                return false;
+            }
         }
 
 

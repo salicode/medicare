@@ -21,13 +21,14 @@ namespace MediCare.Models.Entities
 
 
 
+
         [HttpGet]
         [AllowAnonymous]
         public async Task<IActionResult> GetDoctors([FromQuery] Guid? specializationId = null)
         {
             try
             {
-                var today = DateTime.Today;
+                var today = DateTime.UtcNow.Date;
 
                 var query = _db.Doctors
                     .Include(d => d.Specialization)
@@ -49,9 +50,12 @@ namespace MediCare.Models.Entities
                         d.Bio,
                         d.PhoneNumber,
                         Specialization = d.Specialization.Name,
+                        UserId = d.UserId,
+                        Email = d.User.Email,
+                        // IMPROVED: Check if doctor has valid availabilities for current/future dates
                         IsAvailable = d.Availabilities.Any(a =>
-                            a.IsRecurring ||
-                            (a.SpecificDate.HasValue && a.SpecificDate.Value.Date >= today))
+                            (a.IsRecurring && (int)a.DayOfWeek >= (int)DateTime.UtcNow.DayOfWeek) ||
+                            (!a.IsRecurring && a.SpecificDate.HasValue && a.SpecificDate.Value.Date >= today))
                     })
                     .ToListAsync();
 
@@ -116,7 +120,11 @@ namespace MediCare.Models.Entities
                 var currentUserId = Guid.Parse(User.FindFirst("id")!.Value);
 
                 var doctor = await _db.Doctors
+                    .Include(d => d.Specialization)
+                    .Include(d => d.User)
+                    .Include(d => d.Availabilities)
                     .FirstOrDefaultAsync(d => d.UserId == currentUserId);
+
 
                 if (doctor == null)
                     return NotFound("Doctor profile not found");
@@ -144,6 +152,69 @@ namespace MediCare.Models.Entities
             {
                 _logger.LogError(ex, "Error updating doctor profile");
                 return StatusCode(500, "An error occurred while updating profile");
+            }
+        }
+
+        [HttpGet("{id:guid}")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetDoctorById(Guid id)
+        {
+            try
+            {
+                var doctor = await _db.Doctors
+                    .Include(d => d.Specialization)
+                    .Include(d => d.User)
+                    .Include(d => d.Availabilities)
+                    .Where(d => d.Id == id && d.IsActive)
+                    .Select(d => new
+                    {
+                        d.Id,
+                        d.FullName,
+                        d.YearsOfExperience,
+                        d.ConsultationFee,
+                        d.Bio,
+                        d.PhoneNumber,
+                        Specialization = new
+                        {
+                            d.Specialization.Id,
+                            d.Specialization.Name,
+                            d.Specialization.Description
+                        },
+
+                        // User Information
+                        UserId = d.UserId,
+                        Username = d.User.Username,
+                        Email = d.User.Email,
+                        IsEmailConfirmed = d.User.IsEmailConfirmed,
+                        UserCreatedAt = d.User.CreatedAt,
+
+                        // Availability Information
+                        Availabilities = d.Availabilities.Select(a => new
+                        {
+                            a.Id,
+                            a.DayOfWeek,
+                            a.StartTime,
+                            a.EndTime,
+                            a.IsRecurring,
+                            a.SpecificDate,
+                            a.MaxAppointmentsPerSlot
+                        }),
+
+                        IsAvailable = d.Availabilities.Any(a =>
+                            a.IsRecurring ||
+                            (a.SpecificDate.HasValue && a.SpecificDate.Value.Date >= DateTime.Today))
+                    })
+                    .FirstOrDefaultAsync();
+
+                if (doctor == null)
+                    return NotFound("Doctor not found");
+
+                return Ok(doctor);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving doctor {DoctorId}", id);
+                return StatusCode(500, "An error occurred while retrieving doctor information");
             }
         }
 
@@ -212,7 +283,18 @@ namespace MediCare.Models.Entities
                 _db.DoctorAvailabilities.Add(availability);
                 await _db.SaveChangesAsync();
 
-                return Ok(availability);
+                // FIX: Return a simplified response instead of the full entity with navigation properties
+                return Ok(new
+                {
+                    availability.Id,
+                    availability.DayOfWeek,
+                    availability.StartTime,
+                    availability.EndTime,
+                    availability.IsRecurring,
+                    availability.SpecificDate,
+                    availability.MaxAppointmentsPerSlot,
+                    DoctorId = availability.DoctorId
+                });
             }
             catch (Exception ex)
             {
@@ -271,6 +353,52 @@ namespace MediCare.Models.Entities
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error retrieving availability for doctor {DoctorId}", id);
+                return StatusCode(500, "An error occurred while retrieving availability");
+            }
+        }
+
+        [HttpGet("{id:guid}/detailed-availability")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetDetailedDoctorAvailability(Guid id)
+        {
+            try
+            {
+                var doctor = await _db.Doctors
+                    .Include(d => d.Availabilities)
+                    .Include(d => d.Specialization)
+                    .Where(d => d.Id == id && d.IsActive)
+                    .Select(d => new
+                    {
+                        d.Id,
+                        d.FullName,
+                        Specialization = d.Specialization.Name,
+                        IsActive = d.IsActive,
+                        Availabilities = d.Availabilities.Select(a => new
+                        {
+                            a.Id,
+                            Day = a.DayOfWeek.ToString(),
+                            a.StartTime,
+                            a.EndTime,
+                            a.IsRecurring,
+                            a.SpecificDate,
+                            a.MaxAppointmentsPerSlot,
+                            IsFuture = !a.IsRecurring && a.SpecificDate.HasValue ?
+                            a.SpecificDate.Value.Date >= DateTime.UtcNow.Date : true
+                        }),
+                        HasValidAvailabilities = d.Availabilities.Any(a =>
+                            a.IsRecurring ||
+                            (a.SpecificDate.HasValue && a.SpecificDate.Value.Date >= DateTime.UtcNow.Date))
+                    })
+                    .FirstOrDefaultAsync();
+
+                if (doctor == null)
+                    return NotFound("Doctor not found");
+
+                return Ok(doctor);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving detailed availability for doctor {DoctorId}", id);
                 return StatusCode(500, "An error occurred while retrieving availability");
             }
         }

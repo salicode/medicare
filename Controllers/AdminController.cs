@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using MediCare.Helpers;
+using MediCare.Models.DTOs.Doctors;
+
 namespace MediCare.Models.Entities
 {
     [ApiController]
@@ -157,12 +159,13 @@ namespace MediCare.Models.Entities
             }
         }
 
+
         [HttpPost("doctors")]
         public async Task<IActionResult> CreateDoctor([FromBody] CreateDoctorRequest req)
         {
             try
             {
-                
+
 
                 if (!ValidationHelpers.IsValidInput(req.FullName, " .'-"))
                     return BadRequest("Full name contains invalid characters. Only letters, spaces, periods, apostrophes, and hyphens are allowed.");
@@ -197,6 +200,17 @@ namespace MediCare.Models.Entities
                 if (req.ConsultationFee > 10000) // $10,000 maximum fee
                     return BadRequest("Consultation fee is too high");
 
+                // Verify specialization exists
+                var specialization = await _db.Specializations.FindAsync(req.SpecializationId);
+                if (specialization == null)
+                    return BadRequest("Invalid specialization");
+
+                // Get Doctor role
+                var doctorRole = await _db.Roles.FirstOrDefaultAsync(r =>
+                    r.Name == RoleConstants.Doctor && r.IsSystemRole);
+                if (doctorRole == null)
+                    return BadRequest("Doctor role not found in system");
+
                 // Sanitize inputs
                 var sanitizedFullName = ValidationHelpers.SanitizeInput(req.FullName);
                 var sanitizedPhoneNumber = !string.IsNullOrEmpty(req.PhoneNumber) ? ValidationHelpers.SanitizeInput(req.PhoneNumber) : null;
@@ -227,13 +241,7 @@ namespace MediCare.Models.Entities
                     return BadRequest("Doctor profile already exists for this user");
                 }
 
-                // Verify specialization exists and is valid
-                var specialization = await _db.Specializations.FindAsync(req.SpecializationId);
-                if (specialization == null)
-                {
-                    _logger.LogWarning("Attempt to create doctor with invalid specialization: {SpecializationId}", req.SpecializationId);
-                    return BadRequest("Invalid specialization");
-                }
+
 
                 // Check if full name is already in use by another doctor
                 if (await _db.Doctors.AnyAsync(d => d.FullName == sanitizedFullName && d.UserId != req.UserId))
@@ -265,7 +273,10 @@ namespace MediCare.Models.Entities
                     doctor.FullName,
                     Specialization = specialization.Name,
                     doctor.YearsOfExperience,
-                    doctor.ConsultationFee
+                    doctor.ConsultationFee,
+                    doctor.PhoneNumber,
+                    doctor.Bio,
+                    doctor.IsActive
                 });
             }
             catch (Exception ex)
